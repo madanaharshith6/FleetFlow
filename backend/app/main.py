@@ -19,10 +19,12 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        os.getenv("FRONTEND_URL", "")
-    ],
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    os.getenv("FRONTEND_URL", "")
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
@@ -53,29 +55,20 @@ def startup():
     db = SessionLocal()
 
     try:
-        # Find the default administrator account
-        admin = db.query(User).filter(
+        # Create default administrator account
+        if not db.query(User).filter(
             User.email == "admin@fleetflow.com"
-        ).first()
+        ).first():
 
-        if admin:
-            # Reset the demo administrator account
-            admin.password_hash = hash_password("Admin@123")
-            admin.role = "Administrator"
-            admin.is_active = True
-
-        else:
-            # Create the default administrator account
             db.add(
                 User(
                     email="admin@fleetflow.com",
                     password_hash=hash_password("Admin@123"),
-                    role="Administrator",
-                    is_active=True
+                    role="Administrator"
                 )
             )
 
-        db.commit()
+            db.commit()
 
     finally:
         db.close()
