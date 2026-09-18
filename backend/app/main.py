@@ -69,4 +69,4 @@ def startup():
             db.commit()
 
     finally:
-        db.close()hash_password
+        db.close()
