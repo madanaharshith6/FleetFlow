@@ -53,20 +53,29 @@ def startup():
     db = SessionLocal()
 
     try:
-        # Create default administrator account
-        if not db.query(User).filter(
+        # Find the default administrator account
+        admin = db.query(User).filter(
             User.email == "admin@fleetflow.com"
-        ).first():
+        ).first()
 
+        if admin:
+            # Reset the demo administrator account
+            admin.password_hash = hash_password("Admin@123")
+            admin.role = "Administrator"
+            admin.is_active = True
+
+        else:
+            # Create the default administrator account
             db.add(
                 User(
                     email="admin@fleetflow.com",
                     password_hash=hash_password("Admin@123"),
-                    role="Administrator"
+                    role="Administrator",
+                    is_active=True
                 )
             )
 
-            db.commit()
+        db.commit()
 
     finally:
         db.close()
