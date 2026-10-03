@@ -6,8 +6,8 @@ from .route_optimizer import geocode_city, haversine_distance, TRAFFIC_MULTIPLIE
 
 
 VALID_TRANSITIONS = {
-    "Created": ["Assigned", "Cancelled"],
-    "Assigned": ["In Transit", "Created", "Cancelled"],
+    "Created": ["Assigned", "In Transit", "Cancelled"],
+    "Assigned": ["In Transit", "Delayed", "Created", "Cancelled"],
     "In Transit": ["Delayed", "Delivered", "Cancelled"],
     "Delayed": ["In Transit", "Delivered", "Cancelled"],
     "Delivered": [],
@@ -156,6 +156,6 @@ def simulate_gps_progress_step(
         "location_name": loc_name,
         "remaining_km": remaining_km,
         "eta": duration_text,
-        "gps_status": "GPS Updating" if new_progress < 100 else "Arrived",
+        "gps_status": "Simulated GPS (Advancing)" if new_progress < 100 else "Simulated GPS (Arrived)",
         "timestamp": datetime.utcnow().isoformat()
     }

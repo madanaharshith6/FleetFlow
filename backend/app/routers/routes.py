@@ -36,6 +36,6 @@ def recalculate_route(
     return calculate_routes(
         origin=data.origin.strip(),
         destination=data.destination.strip(),
-        traffic_level=data.traffic_level or "High",
+        traffic_level=data.traffic_level or "Moderate",
         vehicle_type=data.vehicle_type or "Truck"
     )

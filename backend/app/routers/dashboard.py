@@ -42,7 +42,7 @@ def summary(
             "progress": s.progress or 0.0,
             "driver_name": s.driver.name if s.driver else "Unassigned",
             "vehicle_id": s.vehicle.vehicle_id if s.vehicle else "Unassigned",
-            "eta": s.estimated_duration or "TBD"
+            "eta": "Delivered" if s.status == "Delivered" else ("Cancelled" if s.status == "Cancelled" else (s.estimated_duration or "TBD"))
         })
 
     return {

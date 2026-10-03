@@ -34,13 +34,13 @@ def get_live_tracking_telemetry(
         shipment.status
     )
 
-    gps_status = "GPS Connected"
+    gps_status = "Simulated GPS: Active Corridor"
     if shipment.status == "Delivered":
-        gps_status = "Arrived / Completed"
+        gps_status = "Simulated GPS: Arrived / Completed"
     elif shipment.status == "Cancelled":
-        gps_status = "Shipment Cancelled"
+        gps_status = "Simulated GPS: Cancelled"
     elif not shipment.latitude or not shipment.longitude:
-        gps_status = "Awaiting Telemetry"
+        gps_status = "Simulated GPS: Awaiting Waypoint"
 
     vehicle_info = None
     if shipment.vehicle:
@@ -71,7 +71,7 @@ def get_live_tracking_telemetry(
         "distance_km": shipment.distance_km or 0.0,
         "remaining_km": rem_km,
         "estimated_duration": dur_text,
-        "eta": eta_dt.strftime("%Y-%m-%d %H:%M UTC") if eta_dt else dur_text,
+        "eta": "Delivered" if shipment.status == "Delivered" else ("Cancelled" if shipment.status == "Cancelled" else (eta_dt.strftime("%Y-%m-%d %H:%M UTC") if eta_dt else dur_text)),
         "traffic_level": shipment.traffic_level or "Moderate",
         "gps_status": gps_status,
         "last_update": shipment.updated_at or datetime.utcnow(),

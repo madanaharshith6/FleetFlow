@@ -14,6 +14,7 @@ from ..schemas import (
     ShipmentUpdate,
     ShipmentStatusUpdate,
     ShipmentAssign,
+    ShipmentRecalculateRoute,
     ShipmentHistoryResponse,
     VALID_SHIPMENT_STATUSES
 )
@@ -51,7 +52,7 @@ def format_shipment_response(s: Shipment) -> dict:
         "latitude": s.latitude,
         "longitude": s.longitude,
         "distance_km": s.distance_km or 0.0,
-        "estimated_duration": s.estimated_duration or "TBD",
+        "estimated_duration": "Delivered" if s.status == "Delivered" else ("Cancelled" if s.status == "Cancelled" else (s.estimated_duration or "TBD")),
         "route_type": s.route_type or "Fastest Route",
         "traffic_level": s.traffic_level or "Moderate",
         "created_at": s.created_at,
@@ -385,13 +386,89 @@ async def assign_shipment_assets(
     return format_shipment_response(shipment)
 
 
+@router.post("/{identifier}/recalculate-route", response_model=ShipmentResponse)
+async def recalculate_shipment_route(
+    identifier: str,
+    data: ShipmentRecalculateRoute,
+    db: Session = Depends(get_db),
+    user: User = Depends(roles("Administrator", "Fleet Manager", "Dispatcher", "Driver"))
+):
+    query = db.query(Shipment)
+    if identifier.isdigit():
+        shipment = query.filter(or_(Shipment.id == int(identifier), Shipment.shipment_id == identifier)).first()
+    else:
+        shipment = query.filter(or_(Shipment.shipment_id.ilike(identifier), Shipment.tracking_number.ilike(identifier))).first()
+
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+
+    new_traffic = data.traffic_level or shipment.traffic_level or "Moderate"
+    new_route_type = data.route_type or shipment.route_type or "Fastest Route"
+
+    # Recalculate route alternatives using optimizer
+    route_calc = calculate_routes(shipment.origin, shipment.destination, new_traffic)
+    selected = next((r for r in route_calc["routes"] if r["route_type"] == new_route_type), route_calc["routes"][0])
+
+    shipment.traffic_level = new_traffic
+    shipment.route_type = selected["route_type"]
+    shipment.distance_km = selected["distance_km"]
+
+    # Recompute real-time ETA based on remaining progress and new traffic factor
+    eta_dt, dur_text, rem_km = calculate_dynamic_eta(
+        shipment.progress or 0.0,
+        shipment.distance_km,
+        shipment.traffic_level,
+        shipment.status
+    )
+    shipment.expected_delivery = eta_dt
+    shipment.estimated_duration = dur_text
+    shipment.updated_at = datetime.utcnow()
+
+    # Log into history
+    history = ShipmentHistory(
+        shipment_id=shipment.id,
+        event_type="Route Recalculated",
+        previous_status=shipment.status,
+        new_status=shipment.status,
+        status=shipment.status,
+        current_location=shipment.current_location,
+        progress=shipment.progress or 0.0,
+        latitude=shipment.latitude,
+        longitude=shipment.longitude,
+        expected_delivery=shipment.expected_delivery,
+        description=f"Route recalculated under '{new_traffic}' traffic ({shipment.route_type}). Dynamic ETA updated to {dur_text} ({rem_km} km remaining)."
+    )
+    db.add(history)
+    db.commit()
+    db.refresh(shipment)
+
+    # Broadcast via WebSocket
+    await manager.broadcast_to_shipment(shipment.shipment_id, {
+        "type": "route_recalculated",
+        "shipment_id": shipment.shipment_id,
+        "traffic_level": shipment.traffic_level,
+        "route_type": shipment.route_type,
+        "estimated_duration": shipment.estimated_duration,
+        "eta": dur_text,
+        "remaining_km": rem_km,
+        "progress": shipment.progress
+    })
+
+    return format_shipment_response(shipment)
+
+
 @router.get("/{identifier}/history", response_model=List[ShipmentHistoryResponse])
 def get_shipment_history(
     identifier: str,
     db: Session = Depends(get_db),
     user: User = Depends(roles("Administrator", "Fleet Manager", "Dispatcher", "Driver"))
 ):
-    shipment = db.query(Shipment).filter(or_(Shipment.id == int(identifier) if identifier.isdigit() else False, Shipment.shipment_id == identifier)).first()
+    query = db.query(Shipment)
+    if identifier.isdigit():
+        shipment = query.filter(or_(Shipment.id == int(identifier), Shipment.shipment_id == identifier)).first()
+    else:
+        shipment = query.filter(or_(Shipment.shipment_id.ilike(identifier), Shipment.tracking_number.ilike(identifier))).first()
+
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
 

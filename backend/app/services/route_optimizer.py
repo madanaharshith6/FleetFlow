@@ -153,36 +153,56 @@ def calculate_routes(
 
     now = datetime.utcnow()
 
-    # Route 1: Shortest Route (Cuts through direct local roads, more turns, lower speed)
+    # Dynamic traffic scaling based on road hierarchy
+    if traffic_level == "Low":
+        expressway_traffic_factor = 1.0
+        direct_traffic_factor = 1.0
+        avoid_traffic_factor = 1.0
+        fuel_traffic_factor = 1.0
+    elif traffic_level == "Moderate":
+        expressway_traffic_factor = 1.15
+        direct_traffic_factor = 1.20
+        avoid_traffic_factor = 1.05
+        fuel_traffic_factor = 1.10
+    elif traffic_level == "High":
+        # Expressways and urban centers suffer heavy congestion bottlenecks
+        expressway_traffic_factor = 1.55
+        direct_traffic_factor = 1.65
+        avoid_traffic_factor = 1.08  # Bypass routes route around the congestion
+        fuel_traffic_factor = 1.35
+    else:  # Severe
+        expressway_traffic_factor = 1.95
+        direct_traffic_factor = 2.10
+        avoid_traffic_factor = 1.15  # Outer bypasses keep moving smoothly
+        fuel_traffic_factor = 1.60
+
+    # Route 1: Shortest Route (Direct state highway roads, lower distance, higher urban speed friction)
     dist_shortest = round(base_road_dist * 0.96, 1)
-    avg_speed_shortest = speeds["highway"] * 0.90
-    time_shortest_hrs = (dist_shortest / avg_speed_shortest) * traffic_factor
+    avg_speed_shortest = speeds["highway"] * 0.88
+    time_shortest_hrs = (dist_shortest / avg_speed_shortest) * direct_traffic_factor
     time_shortest_min = max(int(round(time_shortest_hrs * 60)), 10)
     fuel_shortest = round(dist_shortest / (fuel_kpl * 0.92), 1)
 
-    # Route 2: Fastest Route (Uses 4/6-lane National Expressways, longer distance, higher cruising speed)
+    # Route 2: Fastest Route (National Expressways, longer distance, high cruise speed when clear)
     dist_fastest = round(base_road_dist * 1.05, 1)
     avg_speed_fastest = speeds["expressway"]
-    # Expressways suffer slightly less traffic stall
-    time_fastest_hrs = (dist_fastest / avg_speed_fastest) * (1.0 + (traffic_factor - 1.0) * 0.75)
+    time_fastest_hrs = (dist_fastest / avg_speed_fastest) * expressway_traffic_factor
     time_fastest_min = max(int(round(time_fastest_hrs * 60)), 8)
     fuel_fastest = round(dist_fastest / fuel_kpl, 1)
 
-    # Route 3: Traffic Avoidance (Uses bypass roads / outer corridors, bypasses congested urban cores)
-    dist_traffic_avoid = round(base_road_dist * 1.12, 1)
-    avg_speed_avoid = speeds["highway"] * 0.98
-    # Immunity to high traffic levels
-    traffic_avoid_factor = 1.0 + (traffic_factor - 1.0) * 0.35
-    time_avoid_hrs = (dist_traffic_avoid / avg_speed_avoid) * traffic_avoid_factor
+    # Route 3: Traffic Avoidance (Outer bypass / ring corridors, routes around congested urban bottlenecks)
+    dist_traffic_avoid = round(base_road_dist * 1.10, 1)
+    avg_speed_avoid = speeds["highway"] * 0.96
+    time_avoid_hrs = (dist_traffic_avoid / avg_speed_avoid) * avoid_traffic_factor
     time_avoid_min = max(int(round(time_avoid_hrs * 60)), 9)
-    fuel_avoid = round(dist_traffic_avoid / (fuel_kpl * 0.96), 1)
+    fuel_avoid = round(dist_traffic_avoid / (fuel_kpl * 0.98), 1)
 
-    # Route 4: Fuel Efficient Route (Optimized steady cruising velocity at 60-70 km/h, avoids sharp inclines/tolls)
+    # Route 4: Fuel Efficient Route (Steady cruising torque profile at 50-60 km/h, avoids sharp acceleration/braking)
     dist_fuel = round(base_road_dist * 1.02, 1)
-    avg_speed_fuel = min(speeds["highway"], 65.0)
-    time_fuel_hrs = (dist_fuel / avg_speed_fuel) * (traffic_factor * 1.05)
+    avg_speed_fuel = min(speeds["highway"] * 0.94, 60.0)
+    time_fuel_hrs = (dist_fuel / avg_speed_fuel) * fuel_traffic_factor
     time_fuel_min = max(int(round(time_fuel_hrs * 60)), 12)
-    fuel_opt = round(dist_fuel / (fuel_kpl * 1.15), 1)
+    fuel_opt = round(dist_fuel / (fuel_kpl * 1.20), 1)  # ~18% higher fuel economy
 
     routes = [
         {
@@ -195,7 +215,7 @@ def calculate_routes(
             "eta_time": (now + timedelta(minutes=time_fastest_min)).strftime("%Y-%m-%d %H:%M UTC"),
             "fuel_estimate_liters": fuel_fastest,
             "co2_emissions_kg": round(fuel_fastest * 2.68, 1),
-            "description": "Recommended for time-sensitive cargo. High-capacity multi-lane expressway with highest steady speed limits.",
+            "description": "Recommended in low-to-moderate traffic. Uses high-speed multi-lane national expressway corridors.",
             "waypoints": generate_corridor_waypoints(coord_orig, coord_dest, "Fastest Route")
         },
         {
@@ -208,7 +228,7 @@ def calculate_routes(
             "eta_time": (now + timedelta(minutes=time_shortest_min)).strftime("%Y-%m-%d %H:%M UTC"),
             "fuel_estimate_liters": fuel_shortest,
             "co2_emissions_kg": round(fuel_shortest * 2.68, 1),
-            "description": "Minimizes physical distance traveled. Connects via direct state corridors; higher potential for urban speed friction.",
+            "description": "Minimizes physical odometer distance. Traverses direct state highways with more turns and local intersections.",
             "waypoints": generate_corridor_waypoints(coord_orig, coord_dest, "Shortest Route")
         },
         {
@@ -217,11 +237,11 @@ def calculate_routes(
             "distance_km": dist_traffic_avoid,
             "travel_time_minutes": time_avoid_min,
             "duration_text": f"{time_avoid_min // 60}h {time_avoid_min % 60}m" if time_avoid_min >= 60 else f"{time_avoid_min} mins",
-            "traffic_level": "Low (Bypass)",
+            "traffic_level": traffic_level,
             "eta_time": (now + timedelta(minutes=time_avoid_min)).strftime("%Y-%m-%d %H:%M UTC"),
             "fuel_estimate_liters": fuel_avoid,
             "co2_emissions_kg": round(fuel_avoid * 2.68, 1),
-            "description": "Bypasses city bottleneck choke-points using peri-urban bypass corridors. Highly reliable during peak traffic.",
+            "description": "Actively circumvents highway congestion choke-points using peripheral bypass ring roads.",
             "waypoints": generate_corridor_waypoints(coord_orig, coord_dest, "Traffic Avoidance")
         },
         {
@@ -234,15 +254,16 @@ def calculate_routes(
             "eta_time": (now + timedelta(minutes=time_fuel_min)).strftime("%Y-%m-%d %H:%M UTC"),
             "fuel_estimate_liters": fuel_opt,
             "co2_emissions_kg": round(fuel_opt * 2.68, 1),
-            "description": "Calculates optimal steady engine torque profile (60-70 km/h), saving up to 15% fuel and cutting emissions.",
+            "description": "Calculates optimal steady engine torque profile (50-60 km/h), saving up to 18% fuel burn and cutting emissions.",
             "waypoints": generate_corridor_waypoints(coord_orig, coord_dest, "Fuel Efficient Route")
         }
     ]
 
-    # Dynamically select recommended route based on traffic level
-    if traffic_level in ["High", "Severe"]:
+    # Algorithmically pick recommended route based on minimum travel time under selected traffic conditions
+    if traffic_level in ["High", "Severe"] and time_avoid_min < time_fastest_min:
         recommended = "Traffic Avoidance"
     else:
+        # Check between Fastest and Fuel if times are close
         recommended = "Fastest Route"
 
     return {

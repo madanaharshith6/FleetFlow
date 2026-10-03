@@ -797,6 +797,8 @@ function Shipments({ setPage, setSelectedShipmentId, userRole }) {
   const [newStatusVal, setNewStatusVal] = useState("");
 
   const [form, setForm] = useState({
+    shipment_id: "",
+    tracking_number: "",
     origin: "Vijayawada",
     destination: "Hyderabad",
     customer_name: "Acme Logistics",
@@ -838,7 +840,7 @@ function Shipments({ setPage, setSelectedShipmentId, userRole }) {
     setErr("");
 
     try {
-      const res = await api.post("/api/shipments", {
+      const payload = {
         origin: form.origin.trim(),
         destination: form.destination.trim(),
         customer_name: form.customer_name.trim(),
@@ -848,10 +850,31 @@ function Shipments({ setPage, setSelectedShipmentId, userRole }) {
         driver_id: form.driver_id ? Number(form.driver_id) : null,
         route_type: form.route_type,
         traffic_level: form.traffic_level
-      });
+      };
+      if (form.shipment_id && form.shipment_id.trim()) {
+        payload.shipment_id = form.shipment_id.trim();
+      }
+      if (form.tracking_number && form.tracking_number.trim()) {
+        payload.tracking_number = form.tracking_number.trim();
+      }
 
-      setMsg(`Shipment ${res.data.shipment_id} created with tracking #${res.data.tracking_number}.`);
+      const res = await api.post("/api/shipments", payload);
+
+      setMsg(`Shipment ${res.data.shipment_id} created successfully with tracking #${res.data.tracking_number}.`);
       setShowCreateModal(false);
+      setForm({
+        shipment_id: "",
+        tracking_number: "",
+        origin: "Vijayawada",
+        destination: "Hyderabad",
+        customer_name: "Acme Logistics",
+        customer_phone: "+91 98765 43210",
+        description: "General cargo consignment",
+        vehicle_id: "",
+        driver_id: "",
+        route_type: "Fastest Route",
+        traffic_level: "Moderate"
+      });
       loadAll();
     } catch (error) {
       setErr(error.response?.data?.detail || "Failed to create shipment.");
@@ -1029,6 +1052,27 @@ function Shipments({ setPage, setSelectedShipmentId, userRole }) {
               <div className="modal-body">
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                   <div className="form-group">
+                    <label className="form-label">Shipment ID (Optional)</label>
+                    <input
+                      className="form-input"
+                      value={form.shipment_id}
+                      onChange={(e) => setForm({ ...form, shipment_id: e.target.value })}
+                      placeholder="Auto-generated if empty"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Tracking Number (Optional)</label>
+                    <input
+                      className="form-input"
+                      value={form.tracking_number}
+                      onChange={(e) => setForm({ ...form, tracking_number: e.target.value })}
+                      placeholder="Auto-generated if empty"
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                  <div className="form-group">
                     <label className="form-label">Origin Hub</label>
                     <input
                       className="form-input"
@@ -1162,7 +1206,7 @@ function Shipments({ setPage, setSelectedShipmentId, userRole }) {
               <div>
                 <h3 className="modal-title">Event Audit Trail</h3>
                 <p style={{ fontSize: "12px", color: "#64748b" }}>
-                  {historyModalShipment.shipment_id} (Tracking: {historyModalShipment.tracking_number})
+                  Shipment: <strong>{historyModalShipment.shipment_id}</strong> | Tracking: <span className="code-font">{historyModalShipment.tracking_number}</span> | Corridor: {historyModalShipment.origin} → {historyModalShipment.destination}
                 </p>
               </div>
               <button className="modal-close" onClick={() => setHistoryModalShipment(null)}>✕</button>
@@ -1173,7 +1217,14 @@ function Shipments({ setPage, setSelectedShipmentId, userRole }) {
                   {historyEvents.map((evt) => (
                     <div key={evt.id} className="timeline-item">
                       <div className="timeline-time">{new Date(evt.created_at).toLocaleString()}</div>
-                      <div className="timeline-title">{evt.event_type}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", margin: "2px 0 4px 0" }}>
+                        <span className="timeline-title">{evt.event_type}</span>
+                        {(evt.previous_status || evt.new_status) && (
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: "#4f46e5" }}>
+                            ({evt.previous_status || "Created"} ➔ {evt.new_status || evt.status})
+                          </span>
+                        )}
+                      </div>
                       <div className="timeline-desc">{evt.description}</div>
                       {evt.latitude && evt.longitude && (
                         <div style={{ fontSize: "11px", color: "#0284c7", marginTop: "4px" }}>
@@ -1195,42 +1246,68 @@ function Shipments({ setPage, setSelectedShipmentId, userRole }) {
       )}
 
       {/* UPDATE STATUS MODAL */}
-      {statusModalShipment && (
-        <div className="modal-backdrop">
-          <div className="modal-card" style={{ maxWidth: "450px" }}>
-            <div className="modal-header">
-              <h3 className="modal-title">Update Shipment Status</h3>
-              <button className="modal-close" onClick={() => setStatusModalShipment(null)}>✕</button>
-            </div>
-            <form onSubmit={handleUpdateStatus}>
-              <div className="modal-body">
-                <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "14px" }}>
-                  Current Status: <StatusBadge status={statusModalShipment.status} />
-                </p>
-                <div className="form-group">
-                  <label className="form-label">Next Operational Status</label>
-                  <select
-                    className="form-select"
-                    value={newStatusVal}
-                    onChange={(e) => setNewStatusVal(e.target.value)}
-                  >
-                    <option value="Created">Created</option>
-                    <option value="Assigned">Assigned</option>
-                    <option value="In Transit">In Transit</option>
-                    <option value="Delayed">Delayed</option>
-                    <option value="Delivered">Delivered</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
+      {statusModalShipment && (() => {
+        const allowedTransitionsMap = {
+          "Created": ["Assigned", "In Transit", "Cancelled"],
+          "Assigned": ["In Transit", "Delayed", "Created", "Cancelled"],
+          "In Transit": ["Delayed", "Delivered", "Cancelled"],
+          "Delayed": ["In Transit", "Delivered", "Cancelled"],
+          "Delivered": [],
+          "Cancelled": []
+        };
+        const allowedNext = allowedTransitionsMap[statusModalShipment.status] || [];
+        const isTerminal = allowedNext.length === 0;
+
+        return (
+          <div className="modal-backdrop">
+            <div className="modal-card" style={{ maxWidth: "450px" }}>
+              <div className="modal-header">
+                <div>
+                  <h3 className="modal-title">Update Shipment Status</h3>
+                  <p style={{ fontSize: "12px", color: "#64748b" }}>
+                    {statusModalShipment.shipment_id} (Tracking: {statusModalShipment.tracking_number})
+                  </p>
                 </div>
+                <button className="modal-close" onClick={() => setStatusModalShipment(null)}>✕</button>
               </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setStatusModalShipment(null)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Transition</button>
-              </div>
-            </form>
+              <form onSubmit={handleUpdateStatus}>
+                <div className="modal-body">
+                  <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "14px" }}>
+                    Current Status: <StatusBadge status={statusModalShipment.status} />
+                  </p>
+
+                  {isTerminal ? (
+                    <div className="alert alert-info" style={{ fontSize: "12px" }}>
+                      This shipment has reached terminal state (<strong>{statusModalShipment.status}</strong>) and cannot transition further.
+                    </div>
+                  ) : (
+                    <div className="form-group">
+                      <label className="form-label">Next Operational Status</label>
+                      <select
+                        className="form-select"
+                        value={newStatusVal}
+                        onChange={(e) => setNewStatusVal(e.target.value)}
+                        required
+                      >
+                        <option value="">Select next status</option>
+                        {allowedNext.map((st) => (
+                          <option key={st} value={st}>{st}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => setStatusModalShipment(null)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={isTerminal || !newStatusVal}>
+                    Save Transition
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </section>
   );
 }
@@ -1247,6 +1324,10 @@ function LiveTracking({ shipmentId, userRole }) {
   const [telemetry, setTelemetry] = useState(null);
   const [wsStatus, setWsStatus] = useState("Connecting...");
   const [simulating, setSimulating] = useState(false);
+  const [trafficSelect, setTrafficSelect] = useState("Moderate");
+  const [recalculating, setRecalculating] = useState(false);
+  const [showLiveHistoryModal, setShowLiveHistoryModal] = useState(false);
+  const [liveHistoryEvents, setLiveHistoryEvents] = useState([]);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
@@ -1282,6 +1363,9 @@ function LiveTracking({ shipmentId, userRole }) {
     try {
       const res = await api.get(`/api/tracking/${sid}`);
       setTelemetry(res.data);
+      if (res.data.traffic_level) {
+        setTrafficSelect(res.data.traffic_level);
+      }
     } catch (e) {
       setErr(e.response?.data?.detail || "Unable to fetch live telemetry.");
     }
@@ -1309,6 +1393,7 @@ function LiveTracking({ shipmentId, userRole }) {
     }
 
     try {
+      setWsStatus("Connecting...");
       const wsHost = window.location.hostname || "localhost";
       const wsUrl = `ws://${wsHost}:8000/ws/shipments/${sid}`;
       const socket = new WebSocket(wsUrl);
@@ -1331,20 +1416,30 @@ function LiveTracking({ shipmentId, userRole }) {
               remaining_km: data.remaining_km,
               eta: data.eta,
               status: data.status,
-              gps_status: data.gps_status || "GPS Updating"
+              gps_status: data.gps_status || "Simulated GPS: Active Corridor"
             }));
           } else if (data.type === "status_changed") {
             setTelemetry((prev) => ({ ...prev, status: data.status, eta: data.eta }));
+          } else if (data.type === "route_recalculated") {
+            setTelemetry((prev) => ({
+              ...prev,
+              traffic_level: data.traffic_level,
+              route_type: data.route_type,
+              estimated_duration: data.estimated_duration,
+              eta: data.eta,
+              remaining_km: data.remaining_km,
+              progress: data.progress
+            }));
           }
         } catch (ex) {}
       };
 
       socket.onerror = () => {
-        setWsStatus("Reconnecting...");
+        setWsStatus("Disconnected");
       };
 
       socket.onclose = () => {
-        setWsStatus("Reconnecting...");
+        setWsStatus("Disconnected");
         reconnectTimeout.current = setTimeout(() => {
           if (activeShipmentId === sid) {
             connectWebSocket(sid);
@@ -1352,7 +1447,7 @@ function LiveTracking({ shipmentId, userRole }) {
         }, 3000);
       };
     } catch (ex) {
-      setWsStatus("Degraded (REST polling)");
+      setWsStatus("Disconnected");
     }
   }
 
@@ -1514,6 +1609,7 @@ function LiveTracking({ shipmentId, userRole }) {
     if (!activeShipmentId) return;
     setSimulating(true);
     setMsg("");
+    setErr("");
 
     try {
       const res = await api.post(`/api/tracking/${activeShipmentId}/simulate-step`);
@@ -1526,16 +1622,47 @@ function LiveTracking({ shipmentId, userRole }) {
     }
   }
 
+  // Dynamic Route Recalculation
+  async function handleRecalculateRoute() {
+    if (!activeShipmentId) return;
+    setRecalculating(true);
+    setMsg("");
+    setErr("");
+    try {
+      const res = await api.post(`/api/shipments/${activeShipmentId}/recalculate-route`, {
+        traffic_level: trafficSelect
+      });
+      setMsg(`Corridor route recalculated under '${trafficSelect}' traffic. Dynamic ETA: ${res.data.estimated_duration}.`);
+      fetchTelemetry(activeShipmentId);
+    } catch (e) {
+      setErr(e.response?.data?.detail || "Route recalculation failed.");
+    } finally {
+      setRecalculating(false);
+    }
+  }
+
+  // Open History modal
+  async function handleOpenLiveHistory() {
+    if (!activeShipmentId) return;
+    try {
+      const res = await api.get(`/api/shipments/${activeShipmentId}/history`);
+      setLiveHistoryEvents(res.data);
+      setShowLiveHistoryModal(true);
+    } catch (e) {
+      setErr("Unable to load event history.");
+    }
+  }
+
   return (
     <section>
       <div className="page-header">
         <div>
           <h1 className="page-title">Live GPS Telemetry & Tracking</h1>
-          <p className="page-subtitle">Real-time corridor monitoring with WebSocket updates and waypoint simulation</p>
+          <p className="page-subtitle">Real-time corridor monitoring with WebSocket updates, route recalculation, and waypoint simulation</p>
         </div>
-        <div className="header-actions">
+        <div className="header-actions" style={{ flexWrap: "wrap", gap: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <label style={{ fontSize: "12px", fontWeight: "600", color: "#64748b" }}>Select Shipment:</label>
+            <label style={{ fontSize: "12px", fontWeight: "600", color: "#64748b" }}>Shipment:</label>
             <select
               className="select-filter"
               value={activeShipmentId}
@@ -1548,12 +1675,43 @@ function LiveTracking({ shipmentId, userRole }) {
               ))}
             </select>
           </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <select
+              className="select-filter"
+              value={trafficSelect}
+              onChange={(e) => setTrafficSelect(e.target.value)}
+              title="Select Traffic Condition for Corridor"
+            >
+              <option value="Low">Low Traffic</option>
+              <option value="Moderate">Moderate Traffic</option>
+              <option value="High">High Traffic</option>
+              <option value="Severe">Severe Traffic</option>
+            </select>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleRecalculateRoute}
+              disabled={recalculating || !activeShipmentId}
+              title="Recalculate route and ETA with updated traffic conditions"
+            >
+              {recalculating ? "Recalculating..." : "🔄 Recalculate Route"}
+            </button>
+          </div>
+
           <button
             className="btn btn-success btn-sm"
             onClick={handleSimulateStep}
             disabled={simulating || (telemetry && telemetry.status === "Delivered")}
           >
             {simulating ? "Simulating..." : "▶ Simulate Next Waypoint"}
+          </button>
+
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={handleOpenLiveHistory}
+            disabled={!activeShipmentId}
+          >
+            📜 Audit History
           </button>
         </div>
       </div>
@@ -1565,9 +1723,13 @@ function LiveTracking({ shipmentId, userRole }) {
         <div className="tracking-layout">
           {/* TELEMETRY SIDEBAR CARD */}
           <div className="content-panel" style={{ margin: 0 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
               <span className="code-font">{telemetry.tracking_number}</span>
               <StatusBadge status={telemetry.status} />
+            </div>
+
+            <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "12px", background: "#f8fafc", padding: "6px 10px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+              🛰️ Telemetry Source: <strong>Simulated GPS Corridor Engine</strong>
             </div>
 
             <h3 style={{ fontSize: "18px", fontWeight: "800", marginBottom: "4px" }}>
@@ -1603,7 +1765,9 @@ function LiveTracking({ shipmentId, userRole }) {
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "#64748b" }}>Estimated Arrival:</span>
-                <strong>{telemetry.eta}</strong>
+                <strong style={{ color: telemetry.status === "Delivered" ? "#059669" : "#0f172a" }}>
+                  {telemetry.status === "Delivered" ? "Delivered" : telemetry.eta}
+                </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "#64748b" }}>Current Coordinates:</span>
@@ -1611,10 +1775,14 @@ function LiveTracking({ shipmentId, userRole }) {
                   {telemetry.latitude}, {telemetry.longitude}
                 </span>
               </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#64748b" }}>Corridor Traffic:</span>
+                <TrafficBadge level={telemetry.traffic_level} />
+              </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ color: "#64748b" }}>WebSocket Stream:</span>
-                <span style={{ fontWeight: 600, fontSize: "12px", color: wsStatus === "Connected" ? "#059669" : "#d97706" }}>
-                  ● {wsStatus}
+                <span style={{ fontWeight: 600, fontSize: "12px", color: wsStatus === "Connected" ? "#059669" : (wsStatus === "Connecting..." ? "#d97706" : "#dc2626") }}>
+                  ● {wsStatus === "Connected" ? "Connected (Live Stream)" : (wsStatus === "Connecting..." ? "Connecting..." : "Disconnected")}
                 </span>
               </div>
             </div>
@@ -1641,7 +1809,7 @@ function LiveTracking({ shipmentId, userRole }) {
             ></div>
             <div className="telemetry-hud">
               <div className="hud-item">
-                <span className="hud-label">GPS Telemetry</span>
+                <span className="hud-label">Telemetry Status</span>
                 <span className="hud-val" style={{ color: "#10b981", fontSize: "14px" }}>
                   {telemetry.gps_status}
                 </span>
@@ -1656,7 +1824,9 @@ function LiveTracking({ shipmentId, userRole }) {
               </div>
               <div className="hud-item">
                 <span className="hud-label">Dynamic ETA</span>
-                <span className="hud-val" style={{ color: "#4f46e5" }}>{telemetry.estimated_duration || "Calculating"}</span>
+                <span className="hud-val" style={{ color: "#4f46e5" }}>
+                  {telemetry.status === "Delivered" ? "Delivered" : (telemetry.estimated_duration || "Calculating")}
+                </span>
               </div>
             </div>
           </div>
@@ -1666,6 +1836,53 @@ function LiveTracking({ shipmentId, userRole }) {
           <div className="empty-icon">📡</div>
           <h3>Select a shipment to begin tracking</h3>
           <p>Real-time GPS telemetry and corridor navigation will display here.</p>
+        </div>
+      )}
+
+      {/* LIVE TRACKING AUDIT HISTORY MODAL */}
+      {showLiveHistoryModal && (
+        <div className="modal-backdrop">
+          <div className="modal-card">
+            <div className="modal-header">
+              <div>
+                <h3 className="modal-title">Live Audit Trail — {activeShipmentId}</h3>
+                <p style={{ fontSize: "12px", color: "#64748b" }}>
+                  Historical GPS telemetry, status transitions, and corridor recalculation logs
+                </p>
+              </div>
+              <button className="modal-close" onClick={() => setShowLiveHistoryModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {liveHistoryEvents.length > 0 ? (
+                <div className="timeline">
+                  {liveHistoryEvents.map((evt) => (
+                    <div key={evt.id} className="timeline-item">
+                      <div className="timeline-time">{new Date(evt.created_at).toLocaleString()}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", margin: "2px 0 4px 0" }}>
+                        <span className="timeline-title">{evt.event_type}</span>
+                        {(evt.previous_status || evt.new_status) && (
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: "#4f46e5" }}>
+                            ({evt.previous_status || "Created"} ➔ {evt.new_status || evt.status})
+                          </span>
+                        )}
+                      </div>
+                      <div className="timeline-desc">{evt.description}</div>
+                      {evt.latitude && evt.longitude && (
+                        <div style={{ fontSize: "11px", color: "#0284c7", marginTop: "4px" }}>
+                          📍 Lat: {evt.latitude}, Lon: {evt.longitude} ({evt.current_location})
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: "#64748b", textAlign: "center" }}>No event history recorded yet.</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowLiveHistoryModal(false)}>Close</button>
+            </div>
+          </div>
         </div>
       )}
     </section>
@@ -1703,6 +1920,26 @@ function RouteOptimization({ setPage }) {
       setResult(res.data);
     } catch (error) {
       setErr(error.response?.data?.detail || "Route optimization calculation failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRecalculate(e) {
+    if (e) e.preventDefault();
+    setLoading(true);
+    setErr("");
+
+    try {
+      const res = await api.post("/api/routes/recalculate", {
+        origin,
+        destination,
+        traffic_level: trafficLevel,
+        vehicle_type: vehicleType
+      });
+      setResult(res.data);
+    } catch (error) {
+      setErr(error.response?.data?.detail || "Route recalculation failed.");
     } finally {
       setLoading(false);
     }
@@ -1777,9 +2014,24 @@ function RouteOptimization({ setPage }) {
               </select>
             </div>
 
-            <button className="btn btn-primary" type="submit" disabled={loading} style={{ height: "40px" }}>
-              {loading ? "Calculating..." : "⚡ Optimize Corridor"}
-            </button>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button className="btn btn-primary" type="submit" disabled={loading} style={{ height: "40px" }}>
+                {loading ? "Calculating..." : "⚡ Optimize Corridor"}
+              </button>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={handleRecalculate}
+                disabled={loading}
+                style={{ height: "40px" }}
+                title="Recalculate route alternatives with updated traffic condition"
+              >
+                🔄 Recalculate
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: "12px", color: "#64748b", marginTop: "12px" }}>
+            ℹ️ Traffic Model: <strong>Algorithmic Corridor Simulation</strong> (Indian Highway Networks NH44/NH16). Accurately incorporates congestion factors without paid third-party API dependencies.
           </div>
         </form>
       </div>

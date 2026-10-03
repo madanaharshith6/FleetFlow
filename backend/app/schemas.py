@@ -159,6 +159,11 @@ class ShipmentAssign(BaseModel):
     driver_id: Optional[int] = None
 
 
+class ShipmentRecalculateRoute(BaseModel):
+    traffic_level: Optional[str] = "Moderate"
+    route_type: Optional[str] = None
+
+
 class ShipmentHistoryResponse(BaseModel):
     id: int
     shipment_id: int
