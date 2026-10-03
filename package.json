@@ -1,0 +1,11 @@
+{
+  "name": "fleetflow-root",
+  "version": "2.0.0",
+  "description": "FleetFlow Logistics & Fleet Management Platform",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "start.bat"
+  }
+}
