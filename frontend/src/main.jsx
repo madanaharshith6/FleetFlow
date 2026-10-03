@@ -1394,8 +1394,7 @@ function LiveTracking({ shipmentId, userRole }) {
 
     try {
       setWsStatus("Connecting...");
-      const wsHost = window.location.hostname || "localhost";
-      const wsUrl = `ws://${wsHost}:8000/ws/shipments/${sid}`;
+      const wsUrl = `${WS_BASE}/ws/shipments/${sid}`;
       const socket = new WebSocket(wsUrl);
       wsRef.current = socket;
 
