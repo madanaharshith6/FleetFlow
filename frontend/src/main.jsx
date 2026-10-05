@@ -98,7 +98,11 @@ function Login({ onLoginSuccess }) {
       localStorage.setItem("fleetflow_role", res.data.role);
       onLoginSuccess(res.data.role);
     } catch (error) {
-      setErr(error.response?.data?.detail || "Invalid login credentials. Please verify your email and password.");
+      if (!error.response) {
+        setErr("Cannot connect to FleetFlow backend server (port 8000). Please ensure the backend is started.");
+      } else {
+        setErr(error.response?.data?.detail || "Invalid login credentials. Please verify your email and password.");
+      }
     } finally {
       setLoading(false);
     }
