@@ -331,3 +331,257 @@ class RouteCalculationResponse(BaseModel):
     vehicle_type: str
     routes: List[RouteOption]
     recommended_route: str
+
+
+# ==========================================
+# MILESTONE 3: MAINTENANCE SCHEMAS
+# ==========================================
+
+VALID_MAINTENANCE_CATEGORIES = [
+    "Oil Change",
+    "Tire Replacement",
+    "Engine Service",
+    "Brake Service",
+    "General Inspection"
+]
+
+VALID_MAINTENANCE_STATUSES = [
+    "Scheduled",
+    "In Progress",
+    "Completed",
+    "Overdue",
+    "Cancelled"
+]
+
+VALID_MAINTENANCE_PRIORITIES = [
+    "Low",
+    "Medium",
+    "High",
+    "Urgent"
+]
+
+
+class MaintenanceCreate(BaseModel):
+    vehicle_id: int
+    category: str = Field(min_length=2, max_length=60)
+    description: Optional[str] = Field(default=None, max_length=255)
+    scheduled_date: datetime
+    priority: Optional[str] = "Medium"
+    cost: Optional[float] = 0.0
+    mileage: Optional[float] = None
+    service_center: Optional[str] = Field(default=None, max_length=120)
+    notes: Optional[str] = Field(default=None, max_length=255)
+
+
+class MaintenanceUpdate(BaseModel):
+    category: Optional[str] = None
+    description: Optional[str] = None
+    scheduled_date: Optional[datetime] = None
+    service_date: Optional[datetime] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    cost: Optional[float] = None
+    mileage: Optional[float] = None
+    service_center: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class MaintenanceStatusUpdate(BaseModel):
+    status: str
+    notes: Optional[str] = None
+    cost: Optional[float] = None
+    service_date: Optional[datetime] = None
+
+
+class MaintenanceHistoryResponse(BaseModel):
+    id: int
+    maintenance_id: int
+    vehicle_id: int
+    event_type: str
+    previous_status: Optional[str] = None
+    new_status: str
+    cost: Optional[float] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class MaintenanceResponse(BaseModel):
+    id: int
+    maintenance_id: str
+    vehicle_id: int
+    vehicle_code: Optional[str] = None
+    registration_number: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    category: str
+    description: Optional[str] = None
+    scheduled_date: datetime
+    service_date: Optional[datetime] = None
+    status: str
+    priority: str
+    cost: float
+    mileage: Optional[float] = None
+    service_center: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    is_overdue: bool = False
+    days_until_due: Optional[int] = None
+    history_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class MaintenanceAlertResponse(BaseModel):
+    id: int
+    maintenance_id: str
+    vehicle_id: int
+    vehicle_code: str
+    registration_number: str
+    category: str
+    scheduled_date: datetime
+    priority: str
+    status: str
+    alert_type: str  # "Overdue", "Due Soon", "Urgent Priority"
+    severity: str    # "critical", "warning", "info"
+    message: str
+
+
+class MaintenanceSummaryResponse(BaseModel):
+    total_records: int
+    scheduled_count: int
+    in_progress_count: int
+    completed_count: int
+    overdue_count: int
+    cancelled_count: int
+    total_maintenance_cost: float
+    records_by_category: Dict[str, int]
+    cost_by_category: Dict[str, float]
+    urgent_alerts_count: int
+    upcoming_maintenance: List[MaintenanceResponse]
+    overdue_maintenance: List[MaintenanceResponse]
+    maintenance_by_vehicle: Optional[List[Dict[str, Any]]] = None
+
+
+# ==========================================
+# MILESTONE 3: DRIVER ASSIGNMENT SCHEMAS
+# ==========================================
+
+class DriverAssignVehicle(BaseModel):
+    vehicle_id: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class DriverMonitoringResponse(BaseModel):
+    id: int
+    driver_id: str
+    name: str
+    license_number: str
+    phone: str
+    attendance: float
+    performance: float
+    is_active: bool
+    assigned_vehicle_id: Optional[int] = None
+    assigned_vehicle_code: Optional[str] = None
+    assigned_registration: Optional[str] = None
+    total_trips: int = 0
+    active_trips: int = 0
+    completed_trips: int = 0
+    status_label: str = "Available"
+
+    class Config:
+        from_attributes = True
+
+
+# ==========================================
+# MILESTONE 3: ANALYTICS SCHEMAS
+# ==========================================
+
+class FleetKPIs(BaseModel):
+    total_vehicles: int
+    active_vehicles: int
+    available_vehicles: int
+    maintenance_vehicles: int
+    inactive_vehicles: int
+    fleet_utilization_percent: float
+    utilization_formula: str
+
+
+class DriverKPIs(BaseModel):
+    total_drivers: int
+    active_drivers: int
+    assigned_drivers: int
+    unassigned_drivers: int
+    average_attendance: float
+    average_performance: float
+
+
+class ShipmentKPIs(BaseModel):
+    total_shipments: int
+    active_shipments: int
+    delivered_shipments: int
+    delayed_shipments: int
+    cancelled_shipments: int
+    completion_rate_percent: float
+
+
+class TripKPIs(BaseModel):
+    total_trips: int
+    scheduled_trips: int
+    in_transit_trips: int
+    completed_trips: int
+
+
+class MaintenanceKPIs(BaseModel):
+    total_records: int
+    scheduled_records: int
+    in_progress_records: int
+    completed_records: int
+    overdue_records: int
+    total_expenditure: float
+
+
+class OperationalAnalyticsResponse(BaseModel):
+    fleet: FleetKPIs
+    drivers: DriverKPIs
+    shipments: ShipmentKPIs
+    trips: TripKPIs
+    maintenance: MaintenanceKPIs
+    generated_at: datetime
+
+
+class VehicleFuelMetric(BaseModel):
+    vehicle_id: str
+    registration: str
+    vehicle_type: str
+    trips_completed: int
+    total_distance_km: float
+    estimated_fuel_liters: float
+    fuel_efficiency_kpl: float
+    estimated_fuel_cost: float
+
+
+class FuelAnalyticsResponse(BaseModel):
+    total_distance_logged_km: float
+    total_fuel_consumed_liters: float
+    total_fuel_cost_estimated: float
+    average_fleet_efficiency_kpl: float
+    fuel_by_vehicle_type: Dict[str, Dict[str, float]]
+    vehicle_rankings: List[VehicleFuelMetric]
+    corridor_fuel_breakdown: List[Dict[str, Any]]
+    methodology: str
+
+
+# ==========================================
+# MILESTONE 3: CELERY TASK SCHEMAS
+# ==========================================
+
+class CeleryTaskTriggerResponse(BaseModel):
+    task_id: str
+    task_name: str
+    status: str
+    message: str
+    timestamp: datetime
