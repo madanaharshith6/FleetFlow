@@ -45,6 +45,51 @@ def summary(
             "eta": "Delivered" if s.status == "Delivered" else ("Cancelled" if s.status == "Cancelled" else (s.estimated_duration or "TBD"))
         })
 
+    # Milestone 3 Maintenance & Fleet Analytics Metrics
+    from datetime import datetime
+    from ..models import MaintenanceRecord
+    from ..services.route_optimizer import FUEL_CONSUMPTION_KM_PER_LITER
+
+    now = datetime.utcnow()
+    all_maintenance = db.query(MaintenanceRecord).all()
+    total_maint = len(all_maintenance)
+    sched_maint = sum(1 for m in all_maintenance if m.status == "Scheduled" and m.scheduled_date >= now)
+    in_prog_maint = sum(1 for m in all_maintenance if m.status == "In Progress")
+    comp_maint = sum(1 for m in all_maintenance if m.status == "Completed")
+    overdue_maint = sum(1 for m in all_maintenance if m.status == "Overdue" or (m.status in ["Scheduled", "In Progress"] and m.scheduled_date < now))
+    total_maint_cost = round(sum(m.cost for m in all_maintenance if m.cost), 2)
+
+    utilization_pct = round((active_vehicles / total_vehicles * 100), 1) if total_vehicles > 0 else 0.0
+
+    # Fuel consumption estimate across trips
+    trips = db.query(Trip).all()
+    total_fuel_liters = 0.0
+    for t in trips:
+        eff = 4.5
+        if t.vehicle:
+            eff = FUEL_CONSUMPTION_KM_PER_LITER.get(t.vehicle.vehicle_type, 4.5)
+        dist = t.distance_km or 0.0
+        total_fuel_liters += (dist / eff)
+    total_fuel_liters = round(total_fuel_liters, 1)
+
+    # Active alerts
+    alerts_query = db.query(MaintenanceRecord).filter(
+        MaintenanceRecord.status.in_(["Scheduled", "In Progress", "Overdue"])
+    ).order_by(MaintenanceRecord.scheduled_date.asc()).limit(4).all()
+    active_alerts = []
+    for m in alerts_query:
+        is_over = m.status == "Overdue" or m.scheduled_date < now
+        active_alerts.append({
+            "id": m.id,
+            "maintenance_id": m.maintenance_id,
+            "vehicle_code": m.vehicle.vehicle_id if m.vehicle else "N/A",
+            "category": m.category,
+            "scheduled_date": m.scheduled_date.strftime("%Y-%m-%d"),
+            "status": "Overdue" if is_over else m.status,
+            "priority": m.priority,
+            "severity": "critical" if (is_over or m.priority == "Urgent") else ("warning" if m.priority == "High" else "info")
+        })
+
     return {
         # Milestone 1
         "total_vehicles": total_vehicles,
@@ -60,5 +105,15 @@ def summary(
         "delivered_shipments": delivered_shipments,
         "cancelled_shipments": cancelled_shipments,
         "active_trips": active_trips,
-        "recent_shipments": recent_shipments
+        "recent_shipments": recent_shipments,
+        # Milestone 3
+        "total_maintenance": total_maint,
+        "scheduled_maintenance": sched_maint,
+        "in_progress_maintenance": in_prog_maint,
+        "completed_maintenance": comp_maint,
+        "overdue_maintenance": overdue_maint,
+        "total_maintenance_cost": total_maint_cost,
+        "fleet_utilization_percent": utilization_pct,
+        "total_fuel_consumed_liters": total_fuel_liters,
+        "recent_alerts": active_alerts
     }

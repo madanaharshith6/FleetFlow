@@ -229,11 +229,11 @@ function Dashboard({ setPage, setSelectedShipmentId }) {
 
         <div className="stat-card">
           <div className="stat-header">
-            <span className="stat-title">Active Vehicles</span>
-            <div className="stat-icon" style={{ background: "#eff6ff", color: "#2563eb" }}>⚡</div>
+            <span className="stat-title">Fleet Utilization</span>
+            <div className="stat-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>📈</div>
           </div>
-          <div className="stat-number">{data.active_vehicles}</div>
-          <span className="stat-footnote">On transit or delivery routes</span>
+          <div className="stat-number">{data.fleet_utilization_percent ?? 0}%</div>
+          <span className="stat-footnote">{data.active_vehicles} active / {data.total_vehicles} total assets</span>
         </div>
 
         <div className="stat-card">
@@ -256,13 +256,70 @@ function Dashboard({ setPage, setSelectedShipmentId }) {
 
         <div className="stat-card">
           <div className="stat-header">
-            <span className="stat-title">Delivered Cargo</span>
-            <div className="stat-icon" style={{ background: "#ecfdf5", color: "#10b981" }}>✅</div>
+            <span className="stat-title">Maintenance</span>
+            <div className="stat-icon" style={{ background: "#fff7ed", color: "#ea580c" }}>🔧</div>
           </div>
-          <div className="stat-number">{data.delivered_shipments}</div>
-          <span className="stat-footnote">Successfully fulfilled</span>
+          <div className="stat-number">{data.total_maintenance ?? 0}</div>
+          <span className="stat-footnote">
+            {data.overdue_maintenance > 0 ? (
+              <span style={{ color: "#ef4444", fontWeight: 700 }}>{data.overdue_maintenance} overdue service(s)</span>
+            ) : (
+              `${data.scheduled_maintenance ?? 0} scheduled`
+            )}
+          </span>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-header">
+            <span className="stat-title">Fuel Consumed</span>
+            <div className="stat-icon" style={{ background: "#fef3c7", color: "#d97706" }}>⛽</div>
+          </div>
+          <div className="stat-number">{(data.total_fuel_consumed_liters ?? 0).toLocaleString()} L</div>
+          <span className="stat-footnote">Trip-based powertrain burn</span>
         </div>
       </div>
+
+      {/* PROACTIVE MAINTENANCE & FLEET ALERTS */}
+      {data.recent_alerts && data.recent_alerts.length > 0 && (
+        <div className="content-panel" style={{ marginBottom: "24px", borderColor: "rgba(245,158,11,0.3)" }}>
+          <div className="panel-header">
+            <div>
+              <h2 className="panel-title" style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f59e0b" }}>
+                <span>⚠️</span> Proactive Maintenance & Fleet Alerts
+              </h2>
+              <p style={{ fontSize: "12px", color: "#64748b" }}>Automated scans detecting upcoming services, high priority interventions, and overdue vehicle maintenance</p>
+            </div>
+            <button className="btn btn-secondary btn-sm" onClick={() => setPage("maintenance")}>Manage Maintenance Schedule →</button>
+          </div>
+          <div className="alert-list" style={{ marginTop: "12px" }}>
+            {data.recent_alerts.map((al) => (
+              <div key={al.id} className={`alert-item alert-${al.severity}`}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "18px" }}>
+                    {al.severity === "critical" ? "🚨" : al.severity === "warning" ? "⚠️" : "ℹ️"}
+                  </span>
+                  <div>
+                    <strong style={{ color: "#f8fafc" }}>
+                      {al.vehicle_code} — {al.category}
+                    </strong>
+                    <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+                      Ref #{al.maintenance_id} | Priority: <b>{al.priority}</b> | Scheduled: {al.scheduled_date}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span className={`badge ${al.status === "Overdue" ? "badge-overdue" : "badge-scheduled"}`}>
+                    {al.status}
+                  </span>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setPage("maintenance")}>
+                    Resolve
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* RECENT OPERATIONAL FEED */}
       <div className="content-panel">
@@ -348,8 +405,26 @@ function Vehicles({ userRole }) {
   });
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedVehicle, setSelectedVehicle] = useState(null);
+  const [vehicleHistory, setVehicleHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const canWrite = userRole === "Administrator" || userRole === "Fleet Manager";
+
+  async function handleOpenHistory(veh) {
+    setSelectedVehicle(veh);
+    setHistoryLoading(true);
+    setShowHistoryModal(true);
+    try {
+      const res = await api.get(`/api/maintenance/vehicle/${veh.id}/history`);
+      setVehicleHistory(res.data);
+    } catch (e) {
+      setVehicleHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   async function loadData() {
     try {
@@ -565,6 +640,7 @@ function Vehicles({ userRole }) {
                   <th>Fuel</th>
                   <th>Assigned Driver</th>
                   <th>Status</th>
+                  <th>Service History</th>
                   {canWrite && <th>Quick Action</th>}
                 </tr>
               </thead>
@@ -578,6 +654,15 @@ function Vehicles({ userRole }) {
                     <td>{v.fuel_type}</td>
                     <td>{v.driver_name ? <span style={{ color: "#0284c7", fontWeight: 600 }}>{v.driver_name}</span> : <span style={{ color: "#94a3b8" }}>None</span>}</td>
                     <td><StatusBadge status={v.current_status} /></td>
+                    <td>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: "4px 8px", fontSize: "11px" }}
+                        onClick={() => handleOpenHistory(v)}
+                      >
+                        History 🛠️
+                      </button>
+                    </td>
                     {canWrite && (
                       <td>
                         <select
@@ -599,6 +684,60 @@ function Vehicles({ userRole }) {
           </div>
         </div>
       </div>
+
+      {/* VEHICLE SERVICE HISTORY MODAL */}
+      {showHistoryModal && selectedVehicle && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: "680px" }}>
+            <div className="modal-header">
+              <h3 className="modal-title">
+                Service History — {selectedVehicle.vehicle_id} ({selectedVehicle.registration_number})
+              </h3>
+              <button className="modal-close" onClick={() => setShowHistoryModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {historyLoading ? (
+                <p>Loading vehicle service logs...</p>
+              ) : vehicleHistory.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>
+                  No maintenance records or service logs registered for this vehicle yet.
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Event Type</th>
+                        <th>Status Transition</th>
+                        <th>Logged Cost</th>
+                        <th>Operational Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vehicleHistory.map((h) => (
+                        <tr key={h.id}>
+                          <td>{new Date(h.created_at).toLocaleDateString()}</td>
+                          <td><strong>{h.event_type}</strong></td>
+                          <td>
+                            {h.previous_status ? `${h.previous_status} → ` : ""}
+                            <b>{h.new_status}</b>
+                          </td>
+                          <td>{h.cost ? `₹${h.cost.toLocaleString()}` : "—"}</td>
+                          <td><span style={{ fontSize: "12px", color: "#94a3b8" }}>{h.notes || "—"}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowHistoryModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -610,6 +749,7 @@ function Vehicles({ userRole }) {
 
 function Drivers({ userRole }) {
   const [drivers, setDrivers] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({
     driver_id: "",
@@ -619,20 +759,33 @@ function Drivers({ userRole }) {
   });
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [selectedDriver, setSelectedDriver] = useState(null);
+  const [assignVehicleId, setAssignVehicleId] = useState("");
 
-  const canWrite = userRole === "Administrator" || userRole === "Fleet Manager";
+  const canWrite = userRole === "Administrator" || userRole === "Fleet Manager" || userRole === "Dispatcher";
 
-  async function loadDrivers() {
+  async function loadData() {
     try {
-      const res = await api.get("/api/drivers");
-      setDrivers(res.data);
+      const [dRes, vRes] = await Promise.all([
+        api.get("/api/drivers/monitoring"),
+        api.get("/api/vehicles")
+      ]);
+      setDrivers(dRes.data);
+      setVehicles(vRes.data);
     } catch (e) {
-      setErr(e.response?.data?.detail || "Unable to load drivers.");
+      // Fallback to basic drivers if monitoring endpoint fails
+      try {
+        const res = await api.get("/api/drivers");
+        setDrivers(res.data);
+      } catch (err2) {
+        setErr("Unable to load drivers list.");
+      }
     }
   }
 
   useEffect(() => {
-    loadDrivers();
+    loadData();
   }, []);
 
   async function handleAddDriver(e) {
@@ -648,11 +801,42 @@ function Drivers({ userRole }) {
         phone: form.phone.trim()
       });
 
-      setMsg("Driver registered successfully.");
+      setMsg("Driver registered successfully in database.");
       setForm({ driver_id: "", name: "", license_number: "", phone: "" });
-      loadDrivers();
+      loadData();
     } catch (error) {
       setErr(error.response?.data?.detail || "Failed to register driver.");
+    }
+  }
+
+  async function handleAssignVehicle(e) {
+    e.preventDefault();
+    if (!selectedDriver || !assignVehicleId) return;
+    setMsg("");
+    setErr("");
+    try {
+      const res = await api.post(`/api/drivers/${selectedDriver.id}/assign-vehicle`, {
+        vehicle_id: parseInt(assignVehicleId)
+      });
+      setMsg(res.data.message || "Vehicle assigned successfully.");
+      setShowAssignModal(false);
+      setSelectedDriver(null);
+      setAssignVehicleId("");
+      loadData();
+    } catch (error) {
+      setErr(error.response?.data?.detail || "Vehicle assignment failed.");
+    }
+  }
+
+  async function handleUnassignVehicle(driverId) {
+    setMsg("");
+    setErr("");
+    try {
+      const res = await api.post(`/api/drivers/${driverId}/unassign-vehicle`);
+      setMsg(res.data.message || "Vehicle unassigned.");
+      loadData();
+    } catch (error) {
+      setErr(error.response?.data?.detail || "Failed to unassign vehicle.");
     }
   }
 
@@ -667,8 +851,8 @@ function Drivers({ userRole }) {
     <section>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Driver Personnel</h1>
-          <p className="page-subtitle">Track certified driver roster, compliance, attendance, and assigned vehicles</p>
+          <h1 className="page-title">Driver Personnel & Asset Assignment</h1>
+          <p className="page-subtitle">Track certified driver roster, compliance, attendance, operational dispatch, and vehicle pairing</p>
         </div>
       </div>
 
@@ -733,7 +917,7 @@ function Drivers({ userRole }) {
 
         <div className="content-panel">
           <div className="panel-header">
-            <h2 className="panel-title">Active Roster ({filtered.length})</h2>
+            <h2 className="panel-title">Active Roster & Operational Monitoring ({filtered.length})</h2>
             <div className="filter-bar">
               <input
                 className="search-input"
@@ -741,7 +925,7 @@ function Drivers({ userRole }) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <button className="btn btn-secondary btn-sm" onClick={loadDrivers}>↻ Refresh</button>
+              <button className="btn btn-secondary btn-sm" onClick={loadData}>↻ Refresh</button>
             </div>
           </div>
 
@@ -751,25 +935,68 @@ function Drivers({ userRole }) {
                 <tr>
                   <th>Driver ID</th>
                   <th>Name</th>
-                  <th>License #</th>
-                  <th>Phone</th>
+                  <th>Contact</th>
                   <th>Assigned Vehicle</th>
                   <th>Attendance</th>
                   <th>Performance</th>
-                  <th>Status</th>
+                  <th>Live Status</th>
+                  {canWrite && <th>Assignment Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((d) => (
                   <tr key={d.id}>
                     <td><span className="code-font">{d.driver_id}</span></td>
-                    <td><strong>{d.name}</strong></td>
-                    <td>{d.license_number}</td>
+                    <td>
+                      <strong>{d.name}</strong>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>Lic: {d.license_number}</div>
+                    </td>
                     <td>{d.phone}</td>
-                    <td>{d.assigned_vehicle || <span style={{ color: "#94a3b8" }}>Unassigned</span>}</td>
+                    <td>
+                      {d.assigned_vehicle_code || d.assigned_vehicle ? (
+                        <div>
+                          <strong style={{ color: "#38bdf8" }}>{d.assigned_vehicle_code || d.assigned_vehicle}</strong>
+                          {d.assigned_registration && (
+                            <div style={{ fontSize: "11px", color: "#94a3b8" }}>{d.assigned_registration}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: "#94a3b8" }}>Unassigned</span>
+                      )}
+                    </td>
                     <td><span style={{ fontWeight: 600, color: "#059669" }}>{d.attendance}%</span></td>
                     <td>★ {d.performance > 0 ? d.performance.toFixed(1) : "5.0"}</td>
-                    <td><span className="badge badge-available">Active</span></td>
+                    <td>
+                      <span className={`badge ${d.status_label === "On Trip" ? "badge-transit" : (d.status_label === "Assigned" ? "badge-scheduled" : "badge-available")}`}>
+                        {d.status_label || (d.is_active ? "Available" : "Inactive")}
+                      </span>
+                    </td>
+                    {canWrite && (
+                      <td>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: "4px 8px", fontSize: "11px" }}
+                            onClick={() => {
+                              setSelectedDriver(d);
+                              setAssignVehicleId(d.assigned_vehicle_id ? String(d.assigned_vehicle_id) : (vehicles[0]?.id ? String(vehicles[0].id) : ""));
+                              setShowAssignModal(true);
+                            }}
+                          >
+                            {d.assigned_vehicle_code || d.assigned_vehicle ? "Reassign ⇄" : "Assign 🚛"}
+                          </button>
+                          {(d.assigned_vehicle_code || d.assigned_vehicle) && (
+                            <button
+                              className="btn btn-danger btn-sm"
+                              style={{ padding: "4px 8px", fontSize: "11px" }}
+                              onClick={() => handleUnassignVehicle(d.id)}
+                            >
+                              Release
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -777,6 +1004,53 @@ function Drivers({ userRole }) {
           </div>
         </div>
       </div>
+
+      {/* ASSIGN VEHICLE MODAL */}
+      {showAssignModal && selectedDriver && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: "480px" }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Assign Vehicle to Driver</h3>
+              <button className="modal-close" onClick={() => setShowAssignModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleAssignVehicle}>
+              <div className="modal-body">
+                <p style={{ fontSize: "13px", color: "#94a3b8", marginBottom: "16px" }}>
+                  Pair certified operator <strong>{selectedDriver.name}</strong> ({selectedDriver.driver_id}) with an active commercial transit asset.
+                </p>
+
+                <div className="form-group">
+                  <label className="form-label">Select Commercial Vehicle *</label>
+                  <select
+                    className="form-select"
+                    value={assignVehicleId}
+                    onChange={(e) => setAssignVehicleId(e.target.value)}
+                    required
+                  >
+                    <option value="">-- Choose Fleet Vehicle --</option>
+                    {vehicles.map((v) => {
+                      const isMaint = v.current_status === "Maintenance";
+                      return (
+                        <option key={v.id} value={v.id} disabled={isMaint}>
+                          {v.vehicle_id} ({v.registration_number}) - {v.vehicle_type} [{v.current_status}]{isMaint ? " (MAINTENANCE - LOCKED)" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div className="methodology-box" style={{ marginTop: "12px" }}>
+                  <strong>Safety Rule:</strong> Vehicles currently tagged in <code>Maintenance</code> status cannot be dispatched or assigned to drivers until inspection sign-off.
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowAssignModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={!assignVehicleId}>Confirm Assignment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -2376,6 +2650,1019 @@ function Trips({ userRole }) {
 
 
 // =========================================================
+// MILESTONE 3: VEHICLE MAINTENANCE MANAGEMENT
+// =========================================================
+
+function Maintenance({ userRole }) {
+  const [records, setRecords] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const [workerMsg, setWorkerMsg] = useState("");
+
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [priorityFilter, setPriorityFilter] = useState("All");
+
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [statusForm, setStatusForm] = useState({ status: "In Progress", notes: "", cost: 0 });
+
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyList, setHistoryList] = useState([]);
+  const [historyTitle, setHistoryTitle] = useState("");
+
+  const [createForm, setCreateForm] = useState({
+    vehicle_id: "",
+    category: "Oil Change",
+    description: "",
+    scheduled_date: "",
+    priority: "Medium",
+    cost: "",
+    mileage: "",
+    service_center: "",
+    notes: ""
+  });
+
+  const canManage = userRole === "Administrator" || userRole === "Fleet Manager";
+
+  async function loadData() {
+    setLoading(true);
+    setErr("");
+    try {
+      const [recRes, sumRes, altRes, vehRes] = await Promise.all([
+        api.get("/api/maintenance"),
+        api.get("/api/maintenance/summary"),
+        api.get("/api/maintenance/alerts"),
+        api.get("/api/vehicles")
+      ]);
+      setRecords(recRes.data);
+      setSummary(sumRes.data);
+      setAlerts(altRes.data);
+      setVehicles(vehRes.data);
+      if (vehRes.data.length > 0 && !createForm.vehicle_id) {
+        setCreateForm((prev) => ({ ...prev, vehicle_id: vehRes.data[0].id }));
+      }
+    } catch (e) {
+      setErr(e.response?.data?.detail || "Unable to load maintenance records.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function handleCreateMaintenance(e) {
+    e.preventDefault();
+    setMsg("");
+    setErr("");
+    try {
+      await api.post("/api/maintenance", {
+        vehicle_id: parseInt(createForm.vehicle_id),
+        category: createForm.category,
+        description: createForm.description.trim() || undefined,
+        scheduled_date: new Date(createForm.scheduled_date).toISOString(),
+        priority: createForm.priority,
+        cost: createForm.cost ? parseFloat(createForm.cost) : 0.0,
+        mileage: createForm.mileage ? parseFloat(createForm.mileage) : undefined,
+        service_center: createForm.service_center.trim() || undefined,
+        notes: createForm.notes.trim() || undefined
+      });
+      setMsg("Preventative service successfully scheduled in PostgreSQL.");
+      setShowCreateModal(false);
+      setCreateForm({
+        vehicle_id: vehicles[0]?.id || "",
+        category: "Oil Change",
+        description: "",
+        scheduled_date: "",
+        priority: "Medium",
+        cost: "",
+        mileage: "",
+        service_center: "",
+        notes: ""
+      });
+      loadData();
+    } catch (error) {
+      setErr(error.response?.data?.detail || "Failed to schedule maintenance.");
+    }
+  }
+
+  async function handleStatusUpdate(e) {
+    e.preventDefault();
+    if (!selectedRecord) return;
+    setMsg("");
+    setErr("");
+    try {
+      await api.put(`/api/maintenance/${selectedRecord.id}/status`, {
+        status: statusForm.status,
+        notes: statusForm.notes.trim() || undefined,
+        cost: statusForm.cost ? parseFloat(statusForm.cost) : undefined
+      });
+      setMsg(`Service #${selectedRecord.maintenance_id} transitioned to '${statusForm.status}'.`);
+      setShowStatusModal(false);
+      setSelectedRecord(null);
+      loadData();
+    } catch (error) {
+      setErr(error.response?.data?.detail || "Failed to update maintenance status.");
+    }
+  }
+
+  async function handleViewHistory(rec) {
+    try {
+      const res = await api.get(`/api/maintenance/vehicle/${rec.vehicle_id}/history`);
+      setHistoryList(res.data);
+      setHistoryTitle(`Service History: ${rec.vehicle_code} (${rec.registration_number})`);
+      setShowHistoryModal(true);
+    } catch (error) {
+      setErr(error.response?.data?.detail || "Could not retrieve service history.");
+    }
+  }
+
+  async function handleTriggerCeleryScan() {
+    setWorkerMsg("Dispatching task to Celery background worker via Redis...");
+    try {
+      const res = await api.post("/api/tasks/maintenance-scan");
+      setWorkerMsg(`⚡ Celery Worker Scan: Task ID ${res.data.task_id} (Status: ${res.data.status})`);
+      setTimeout(() => {
+        loadData();
+      }, 1200);
+    } catch (e) {
+      setWorkerMsg(`Worker notice: ${e.response?.data?.detail || e.message}`);
+    }
+  }
+
+  const filtered = records.filter((r) => {
+    const term = search.toLowerCase();
+    const matchesSearch =
+      r.maintenance_id.toLowerCase().includes(term) ||
+      (r.vehicle_code && r.vehicle_code.toLowerCase().includes(term)) ||
+      (r.registration_number && r.registration_number.toLowerCase().includes(term)) ||
+      r.category.toLowerCase().includes(term) ||
+      (r.description && r.description.toLowerCase().includes(term));
+
+    const matchesCat = categoryFilter === "All" || r.category === categoryFilter;
+    const matchesStatus = statusFilter === "All" || r.status === statusFilter;
+    const matchesPriority = priorityFilter === "All" || r.priority === priorityFilter;
+
+    return matchesSearch && matchesCat && matchesStatus && matchesPriority;
+  });
+
+  return (
+    <section>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Fleet Maintenance & Service Management</h1>
+          <p className="page-subtitle">Schedule preventative servicing, track vehicle health logs, and monitor proactive maintenance alerts</p>
+        </div>
+        <div className="header-actions">
+          <button className="btn btn-secondary btn-sm" onClick={handleTriggerCeleryScan}>
+            ⚡ Run Celery Scan
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={loadData}>
+            ↻ Refresh Data
+          </button>
+          {canManage && (
+            <button className="btn btn-primary btn-sm" onClick={() => setShowCreateModal(true)}>
+              + Schedule Service
+            </button>
+          )}
+        </div>
+      </div>
+
+      {msg && <div className="alert alert-success">{msg}</div>}
+      {err && <div className="alert alert-error">{err}</div>}
+      {workerMsg && (
+        <div className="alert" style={{ background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8" }}>
+          {workerMsg}
+        </div>
+      )}
+
+      {/* SUMMARY KPI CARDS */}
+      {summary && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-header">
+              <span className="stat-title">Total Records</span>
+              <div className="stat-icon">🔧</div>
+            </div>
+            <div className="stat-number">{summary.total_records}</div>
+            <span className="stat-footnote">Active maintenance log</span>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-header">
+              <span className="stat-title">Scheduled</span>
+              <div className="stat-icon" style={{ background: "#eff6ff", color: "#2563eb" }}>📅</div>
+            </div>
+            <div className="stat-number">{summary.scheduled_count}</div>
+            <span className="stat-footnote">Upcoming preventative slots</span>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-header">
+              <span className="stat-title">In Progress</span>
+              <div className="stat-icon" style={{ background: "#fef3c7", color: "#d97706" }}>⚙️</div>
+            </div>
+            <div className="stat-number">{summary.in_progress_count}</div>
+            <span className="stat-footnote">At workshop depot</span>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-header">
+              <span className="stat-title">Overdue Alerts</span>
+              <div className="stat-icon" style={{ background: "#fee2e2", color: "#ef4444" }}>⚠️</div>
+            </div>
+            <div className="stat-number" style={{ color: summary.overdue_count > 0 ? "#ef4444" : "inherit" }}>
+              {summary.overdue_count}
+            </div>
+            <span className="stat-footnote">Require urgent action</span>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-header">
+              <span className="stat-title">Total Cost</span>
+              <div className="stat-icon" style={{ background: "#ecfdf5", color: "#10b981" }}>₹</div>
+            </div>
+            <div className="stat-number">₹{summary.total_maintenance_cost.toLocaleString()}</div>
+            <span className="stat-footnote">Persisted service expenses</span>
+          </div>
+        </div>
+      )}
+
+      {/* PROACTIVE ALERTS BANNER */}
+      {alerts && alerts.length > 0 && (
+        <div className="content-panel" style={{ borderLeft: "4px solid #ef4444", marginBottom: "24px" }}>
+          <div className="panel-header" style={{ marginBottom: "12px" }}>
+            <div>
+              <h2 className="panel-title" style={{ color: "#ef4444", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>🚨</span> Proactive Maintenance Alerts ({alerts.length})
+              </h2>
+              <p style={{ fontSize: "12px", color: "#64748b" }}>Automated health warnings derived from real scheduled maintenance records</p>
+            </div>
+          </div>
+          <div className="maintenance-alerts-container">
+            {alerts.map((alt) => (
+              <div key={alt.id} className={`alert-item ${alt.severity}`}>
+                <div>
+                  <strong style={{ marginRight: "8px" }}>[{alt.alert_type}]</strong>
+                  <span>{alt.message}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span className={`alert-badge badge-${alt.severity}`}>{alt.priority}</span>
+                  {canManage && (
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        const target = records.find((r) => r.id === alt.id);
+                        if (target) {
+                          setSelectedRecord(target);
+                          setStatusForm({ status: "In Progress", notes: "Technician dispatched", cost: target.cost });
+                          setShowStatusModal(true);
+                        }
+                      }}
+                    >
+                      Resolve
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* MAIN SCHEDULE TABLE & CONTROLS */}
+      <div className="content-panel">
+        <div className="table-controls-bar">
+          <input
+            className="form-input"
+            style={{ maxWidth: "260px" }}
+            placeholder="Search service, vehicle, ID..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          <select
+            className="form-select"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="All">All Categories</option>
+            <option value="Oil Change">Oil Change</option>
+            <option value="Tire Replacement">Tire Replacement</option>
+            <option value="Engine Service">Engine Service</option>
+            <option value="Brake Service">Brake Service</option>
+            <option value="General Inspection">General Inspection</option>
+          </select>
+
+          <select
+            className="form-select"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="All">All Statuses</option>
+            <option value="Scheduled">Scheduled</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Completed">Completed</option>
+            <option value="Overdue">Overdue</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+
+          <select
+            className="form-select"
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+          >
+            <option value="All">All Priorities</option>
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+            <option value="Urgent">Urgent</option>
+          </select>
+
+          <div style={{ marginLeft: "auto", fontSize: "13px", color: "#64748b" }}>
+            Showing <strong>{filtered.length}</strong> of {records.length} records
+          </div>
+        </div>
+
+        {loading ? (
+          <p style={{ padding: "20px", color: "#64748b" }}>Loading maintenance schedule...</p>
+        ) : filtered.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🔧</div>
+            <p className="empty-text">No maintenance records matched your filter.</p>
+          </div>
+        ) : (
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Vehicle</th>
+                  <th>Category</th>
+                  <th>Scheduled Date</th>
+                  <th>Priority</th>
+                  <th>Cost</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      <span className="mono-code">{r.maintenance_id}</span>
+                    </td>
+                    <td>
+                      <strong>{r.vehicle_code}</strong>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>{r.registration_number} • {r.vehicle_type}</div>
+                    </td>
+                    <td>
+                      <span className="badge badge-category">{r.category}</span>
+                    </td>
+                    <td>
+                      {new Date(r.scheduled_date).toLocaleDateString()}
+                      <div style={{ fontSize: "11px", color: r.is_overdue ? "#ef4444" : "#64748b" }}>
+                        {r.is_overdue ? "Overdue" : r.days_until_due === 0 ? "Due Today" : `In ${r.days_until_due} days`}
+                      </div>
+                    </td>
+                    <td>
+                      <span
+                        className="badge"
+                        style={{
+                          background: r.priority === "Urgent" ? "rgba(239, 68, 68, 0.2)" : r.priority === "High" ? "rgba(245, 158, 11, 0.2)" : "rgba(59, 130, 246, 0.15)",
+                          color: r.priority === "Urgent" ? "#ef4444" : r.priority === "High" ? "#f59e0b" : "#3b82f6"
+                        }}
+                      >
+                        {r.priority}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="mono-code">₹{r.cost ? r.cost.toLocaleString() : "0"}</span>
+                    </td>
+                    <td>
+                      <span
+                        className="badge"
+                        style={{
+                          background: r.status === "Completed" ? "rgba(16, 185, 129, 0.15)" : r.status === "In Progress" ? "rgba(245, 158, 11, 0.2)" : r.status === "Overdue" ? "rgba(239, 68, 68, 0.2)" : "rgba(100, 116, 139, 0.2)",
+                          color: r.status === "Completed" ? "#10b981" : r.status === "In Progress" ? "#f59e0b" : r.status === "Overdue" ? "#ef4444" : "#cbd5e1"
+                        }}
+                      >
+                        {r.status}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <div style={{ display: "inline-flex", gap: "6px" }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          title="View Service History"
+                          onClick={() => handleViewHistory(r)}
+                        >
+                          📜 History
+                        </button>
+                        {canManage && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            title="Update Status"
+                            onClick={() => {
+                              setSelectedRecord(r);
+                              setStatusForm({ status: r.status, notes: "", cost: r.cost });
+                              setShowStatusModal(true);
+                            }}
+                          >
+                            Update
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* MAINTENANCE REPORTS: BY CATEGORY & FLEET ASSET */}
+      {summary && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginTop: "24px", marginBottom: "24px" }}>
+          {/* CATEGORY BREAKDOWN */}
+          <div className="content-panel">
+            <h2 className="panel-title" style={{ marginBottom: "16px" }}>Service Records by Category</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {["Oil Change", "Tire Replacement", "Engine Service", "Brake Service", "General Inspection"].map((cat) => {
+                const count = summary.records_by_category?.[cat] || 0;
+                const cost = summary.cost_by_category?.[cat] || 0;
+                return (
+                  <div key={cat} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: "6px" }}>
+                    <div>
+                      <strong style={{ fontSize: "13px" }}>{cat}</strong>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>{count} scheduled / logged</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <span className="mono-code" style={{ fontSize: "13px" }}>₹{cost.toLocaleString()}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* VEHICLE ASSET BREAKDOWN */}
+          <div className="content-panel">
+            <h2 className="panel-title" style={{ marginBottom: "16px" }}>Maintenance Expenditure by Asset</h2>
+            {summary.maintenance_by_vehicle && summary.maintenance_by_vehicle.length > 0 ? (
+              <div className="table-responsive">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Vehicle</th>
+                      <th>Total Services</th>
+                      <th>Total Spend</th>
+                      <th>Latest Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.maintenance_by_vehicle.map((v) => (
+                      <tr key={v.vehicle_id}>
+                        <td><strong>{v.vehicle_code}</strong> <span style={{ fontSize: "11px", color: "#64748b" }}>({v.registration_number})</span></td>
+                        <td>{v.total_services} service(s)</td>
+                        <td><span className="mono-code">₹{v.total_cost.toLocaleString()}</span></td>
+                        <td><StatusBadge status={v.latest_status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ color: "#64748b", padding: "16px", textAlign: "center" }}>
+                No vehicle-specific maintenance records recorded yet.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SCHEDULE SERVICE MODAL */}
+      {showCreateModal && (
+        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="modal-card" style={{ maxWidth: "560px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Schedule Preventative Service</h3>
+              <button className="modal-close" onClick={() => setShowCreateModal(false)}>×</button>
+            </div>
+            <form onSubmit={handleCreateMaintenance}>
+              <div className="form-group">
+                <label className="form-label">Target Fleet Vehicle *</label>
+                <select
+                  className="form-select"
+                  value={createForm.vehicle_id}
+                  onChange={(e) => setCreateForm({ ...createForm, vehicle_id: e.target.value })}
+                  required
+                >
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.vehicle_id} — {v.registration_number} ({v.vehicle_type}, Status: {v.current_status})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div className="form-group">
+                  <label className="form-label">Service Category *</label>
+                  <select
+                    className="form-select"
+                    value={createForm.category}
+                    onChange={(e) => setCreateForm({ ...createForm, category: e.target.value })}
+                  >
+                    <option value="Oil Change">Oil Change</option>
+                    <option value="Tire Replacement">Tire Replacement</option>
+                    <option value="Engine Service">Engine Service</option>
+                    <option value="Brake Service">Brake Service</option>
+                    <option value="General Inspection">General Inspection</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Priority Level *</label>
+                  <select
+                    className="form-select"
+                    value={createForm.priority}
+                    onChange={(e) => setCreateForm({ ...createForm, priority: e.target.value })}
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div className="form-group">
+                  <label className="form-label">Scheduled Date & Time *</label>
+                  <input
+                    type="datetime-local"
+                    className="form-input"
+                    value={createForm.scheduled_date}
+                    onChange={(e) => setCreateForm({ ...createForm, scheduled_date: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Estimated Cost (INR ₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="50"
+                    className="form-input"
+                    placeholder="e.g. 5000"
+                    value={createForm.cost}
+                    onChange={(e) => setCreateForm({ ...createForm, cost: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div className="form-group">
+                  <label className="form-label">Odometer / Mileage (km)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="form-input"
+                    placeholder="e.g. 35000"
+                    value={createForm.mileage}
+                    onChange={(e) => setCreateForm({ ...createForm, mileage: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Service Workshop</label>
+                  <input
+                    className="form-input"
+                    placeholder="e.g. Central Depot Workshop"
+                    value={createForm.service_center}
+                    onChange={(e) => setCreateForm({ ...createForm, service_center: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Description / Work Scope</label>
+                <textarea
+                  className="form-input"
+                  rows="2"
+                  placeholder="Details of preventative repairs, part replacements, or issues..."
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Confirm Schedule
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* UPDATE STATUS MODAL */}
+      {showStatusModal && selectedRecord && (
+        <div className="modal-overlay" onClick={() => setShowStatusModal(false)}>
+          <div className="modal-card" style={{ maxWidth: "480px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Update Service Lifecycle</h3>
+              <button className="modal-close" onClick={() => setShowStatusModal(false)}>×</button>
+            </div>
+            <form onSubmit={handleStatusUpdate}>
+              <div style={{ marginBottom: "16px", padding: "12px", background: "rgba(255,255,255,0.04)", borderRadius: "8px" }}>
+                <div><strong>Service ID:</strong> {selectedRecord.maintenance_id}</div>
+                <div><strong>Vehicle:</strong> {selectedRecord.vehicle_code} ({selectedRecord.registration_number})</div>
+                <div><strong>Category:</strong> {selectedRecord.category}</div>
+                <div><strong>Current Status:</strong> <span className="badge">{selectedRecord.status}</span></div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">New Status *</label>
+                <select
+                  className="form-select"
+                  value={statusForm.status}
+                  onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value })}
+                >
+                  <option value="Scheduled">Scheduled</option>
+                  <option value="In Progress">In Progress (Vehicle moves to Maintenance)</option>
+                  <option value="Completed">Completed (Vehicle released to Available)</option>
+                  <option value="Overdue">Overdue</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Final Actual Cost (INR ₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  className="form-input"
+                  value={statusForm.cost}
+                  onChange={(e) => setStatusForm({ ...statusForm, cost: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Technician Audit Notes</label>
+                <textarea
+                  className="form-input"
+                  rows="3"
+                  placeholder="Record work completed, replaced parts, or inspection notes..."
+                  value={statusForm.notes}
+                  onChange={(e) => setStatusForm({ ...statusForm, notes: e.target.value })}
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowStatusModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Save Status
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SERVICE HISTORY MODAL */}
+      {showHistoryModal && (
+        <div className="modal-overlay" onClick={() => setShowHistoryModal(false)}>
+          <div className="modal-card" style={{ maxWidth: "650px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">{historyTitle}</h3>
+              <button className="modal-close" onClick={() => setShowHistoryModal(false)}>×</button>
+            </div>
+            {historyList.length === 0 ? (
+              <p style={{ padding: "20px", color: "#64748b" }}>No historical service records found for this vehicle.</p>
+            ) : (
+              <div style={{ maxHeight: "380px", overflowY: "auto" }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Event</th>
+                      <th>Transition</th>
+                      <th>Cost</th>
+                      <th>Notes</th>
+                      <th>Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyList.map((h) => (
+                      <tr key={h.id}>
+                        <td><strong>{h.event_type}</strong></td>
+                        <td>
+                          <span style={{ fontSize: "12px", color: "#94a3b8" }}>
+                            {h.previous_status || "None"} ➔ <strong>{h.new_status}</strong>
+                          </span>
+                        </td>
+                        <td>₹{h.cost ? h.cost.toLocaleString() : "0"}</td>
+                        <td style={{ fontSize: "12px", color: "#cbd5e1" }}>{h.notes || "—"}</td>
+                        <td style={{ fontSize: "11px", color: "#64748b" }}>{new Date(h.created_at).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowHistoryModal(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+
+// =========================================================
+// MILESTONE 3: FLEET PERFORMANCE & FUEL ANALYTICS
+// =========================================================
+
+function Analytics({ userRole }) {
+  const [operational, setOperational] = useState(null);
+  const [fuel, setFuel] = useState(null);
+  const [utilization, setUtilization] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [workerResult, setWorkerResult] = useState("");
+
+  async function loadAnalytics() {
+    setLoading(true);
+    setErr("");
+    try {
+      const [opRes, flRes, utRes] = await Promise.all([
+        api.get("/api/analytics/operational"),
+        api.get("/api/analytics/fuel-monitoring"),
+        api.get("/api/analytics/fleet-utilization")
+      ]);
+      setOperational(opRes.data);
+      setFuel(flRes.data);
+      setUtilization(utRes.data);
+    } catch (e) {
+      setErr(e.response?.data?.detail || "Failed to load operational analytics.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAnalytics();
+  }, []);
+
+  async function runCeleryTask(taskType) {
+    setWorkerResult("Queueing background task to Celery via Redis broker...");
+    try {
+      let endpoint = "/api/tasks/analytics-aggregation";
+      if (taskType === "reminders") endpoint = "/api/tasks/maintenance-reminders";
+      if (taskType === "overdue") endpoint = "/api/tasks/maintenance-scan";
+
+      const res = await api.post(endpoint);
+      setWorkerResult(`⚡ Celery Worker Dispatched: [${res.data.task_name}] Task ID: ${res.data.task_id} (Status: ${res.data.status})`);
+      loadAnalytics();
+    } catch (e) {
+      setWorkerResult(`Celery task error: ${e.response?.data?.detail || e.message}`);
+    }
+  }
+
+  if (loading) {
+    return <div className="content-panel"><p>Loading fleet performance and fuel analytics...</p></div>;
+  }
+
+  return (
+    <section>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Fleet Performance & Fuel Analytics</h1>
+          <p className="page-subtitle">Real-time operational KPIs, fleet utilization analytics, fuel expenditure monitoring, and Celery background workers</p>
+        </div>
+        <div className="header-actions">
+          <button className="btn btn-secondary btn-sm" onClick={loadAnalytics}>
+            ↻ Refresh Analytics
+          </button>
+        </div>
+      </div>
+
+      {err && <div className="alert alert-error">{err}</div>}
+
+      {/* TOP UTILIZATION & EFFICIENCY METRICS */}
+      {operational && fuel && (
+        <div className="kpi-row">
+          <div className="kpi-card">
+            <span className="kpi-title">Fleet Utilization Rate</span>
+            <div className="kpi-value" style={{ color: "#38bdf8" }}>
+              {operational.fleet.fleet_utilization_percent}%
+            </div>
+            <span className="kpi-subtitle">
+              {operational.fleet.active_vehicles} active / {operational.fleet.total_vehicles} total vehicles
+            </span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-title">Delivery Completion Rate</span>
+            <div className="kpi-value" style={{ color: "#10b981" }}>
+              {operational.shipments.completion_rate_percent}%
+            </div>
+            <span className="kpi-subtitle">
+              {operational.shipments.delivered_shipments} of {operational.shipments.total_shipments} shipments fulfilled
+            </span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-title">Average Fleet Fuel Economy</span>
+            <div className="kpi-value" style={{ color: "#f59e0b" }}>
+              {fuel.average_fleet_efficiency_kpl} km/L
+            </div>
+            <span className="kpi-subtitle">Commercial freight powertrain benchmark</span>
+          </div>
+
+          <div className="kpi-card">
+            <span className="kpi-title">Total Fuel Burned</span>
+            <div className="kpi-value">
+              {fuel.total_fuel_consumed_liters.toLocaleString()} L
+            </div>
+            <span className="kpi-subtitle">
+              Est. Cost: ₹{fuel.total_fuel_cost_estimated.toLocaleString()} (@ ₹95/L)
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* OPERATIONAL KPIS GRID */}
+      {operational && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "24px" }}>
+          {/* FLEET UTILIZATION BREAKDOWN */}
+          <div className="content-panel">
+            <h2 className="panel-title" style={{ marginBottom: "16px" }}>Fleet Utilization Breakdown</h2>
+            <div style={{ marginBottom: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", marginBottom: "8px" }}>
+                <span>Active Assets</span>
+                <strong>{operational.fleet.active_vehicles}</strong>
+              </div>
+              <div style={{ width: "100%", height: "8px", background: "rgba(255,255,255,0.1)", borderRadius: "4px", overflow: "hidden" }}>
+                <div style={{ width: `${operational.fleet.fleet_utilization_percent}%`, height: "100%", background: "#38bdf8" }} />
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ padding: "12px", background: "rgba(255,255,255,0.03)", borderRadius: "6px" }}>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>Available Vehicles</div>
+                <div style={{ fontSize: "20px", fontWeight: "700" }}>{operational.fleet.available_vehicles}</div>
+              </div>
+              <div style={{ padding: "12px", background: "rgba(255,255,255,0.03)", borderRadius: "6px" }}>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>Under Maintenance</div>
+                <div style={{ fontSize: "20px", fontWeight: "700", color: "#f59e0b" }}>{operational.fleet.maintenance_vehicles}</div>
+              </div>
+            </div>
+
+            <div className="methodology-box" style={{ marginTop: "16px" }}>
+              <strong>Documented Formula:</strong> {operational.fleet.utilization_formula}
+            </div>
+          </div>
+
+          {/* DRIVER & LOGISTICS METRICS */}
+          <div className="content-panel">
+            <h2 className="panel-title" style={{ marginBottom: "16px" }}>Driver & Delivery Performance</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <div style={{ padding: "12px", background: "rgba(255,255,255,0.03)", borderRadius: "6px" }}>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>Active Drivers</div>
+                <div style={{ fontSize: "20px", fontWeight: "700", color: "#10b981" }}>{operational.drivers.active_drivers}</div>
+                <div style={{ fontSize: "11px", color: "#64748b" }}>{operational.drivers.assigned_drivers} assigned to fleet</div>
+              </div>
+
+              <div style={{ padding: "12px", background: "rgba(255,255,255,0.03)", borderRadius: "6px" }}>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>Driver Attendance</div>
+                <div style={{ fontSize: "20px", fontWeight: "700" }}>{operational.drivers.average_attendance}%</div>
+                <div style={{ fontSize: "11px", color: "#64748b" }}>Avg. Score: {operational.drivers.average_performance}/100</div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ padding: "12px", background: "rgba(255,255,255,0.03)", borderRadius: "6px" }}>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>Dispatched Trips</div>
+                <div style={{ fontSize: "20px", fontWeight: "700" }}>{operational.trips.total_trips}</div>
+                <div style={{ fontSize: "11px", color: "#64748b" }}>{operational.trips.completed_trips} completed</div>
+              </div>
+
+              <div style={{ padding: "12px", background: "rgba(255,255,255,0.03)", borderRadius: "6px" }}>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>Maintenance Cost</div>
+                <div style={{ fontSize: "20px", fontWeight: "700", color: "#38bdf8" }}>₹{operational.maintenance.total_expenditure.toLocaleString()}</div>
+                <div style={{ fontSize: "11px", color: "#64748b" }}>{operational.maintenance.total_records} logged services</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FUEL CONSUMPTION BY VEHICLE */}
+      {fuel && (
+        <div className="content-panel" style={{ marginBottom: "24px" }}>
+          <div className="panel-header">
+            <div>
+              <h2 className="panel-title">Fuel Monitoring & Powertrain Consumption Rankings</h2>
+              <p style={{ fontSize: "12px", color: "#64748b" }}>Trip-based distance calculations mapped to engine fuel economy profiles</p>
+            </div>
+          </div>
+
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Vehicle ID</th>
+                  <th>Registration</th>
+                  <th>Vehicle Type</th>
+                  <th>Trips Completed</th>
+                  <th>Total Odometer</th>
+                  <th>Fuel Efficiency</th>
+                  <th>Est. Fuel Burned</th>
+                  <th>Est. Fuel Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fuel.vehicle_rankings.map((vr) => (
+                  <tr key={vr.vehicle_id}>
+                    <td><span className="mono-code">{vr.vehicle_id}</span></td>
+                    <td><strong>{vr.registration}</strong></td>
+                    <td><span className="badge">{vr.vehicle_type}</span></td>
+                    <td>{vr.trips_completed} trips</td>
+                    <td>{vr.total_distance_km.toLocaleString()} km</td>
+                    <td>{vr.fuel_efficiency_kpl} km/L</td>
+                    <td><strong style={{ color: "#f59e0b" }}>{vr.estimated_fuel_liters.toLocaleString()} L</strong></td>
+                    <td><span className="mono-code">₹{vr.estimated_fuel_cost.toLocaleString()}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="methodology-box">
+            {fuel.methodology}
+          </div>
+        </div>
+      )}
+
+      {/* CELERY ASYNCHRONOUS WORKER JOBS PANEL */}
+      <div className="content-panel">
+        <div className="panel-header">
+          <div>
+            <h2 className="panel-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span>⚡</span> Celery Background Worker Engine (Redis Broker)
+            </h2>
+            <p style={{ fontSize: "12px", color: "#64748b" }}>
+              Asynchronous worker architecture for recurring maintenance reminders, overdue scans, and analytics aggregation
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "12px" }}>
+          <button className="btn btn-primary" onClick={() => runCeleryTask("overdue")}>
+            ⚡ Trigger Overdue Maintenance Scan
+          </button>
+          <button className="btn btn-secondary" onClick={() => runCeleryTask("reminders")}>
+            🔔 Trigger 48h Service Reminders
+          </button>
+          <button className="btn btn-secondary" onClick={() => runCeleryTask("analytics")}>
+            📊 Trigger Fleet Analytics Aggregation
+          </button>
+        </div>
+
+        {workerResult && (
+          <div className="worker-console">
+            <div>&gt; {workerResult}</div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+
+// =========================================================
 // MAIN APP COMPONENT (Shell, Navigation & Reactive State)
 // =========================================================
 
@@ -2430,7 +3717,7 @@ function App() {
             <span className="user-role-label">Authenticated Role</span>
             <span className="user-role-val">{userRole}</span>
           </div>
-          <span className="role-pill">M2</span>
+          <span className="role-pill">M3</span>
         </div>
 
         <nav className="nav-links">
@@ -2489,6 +3776,22 @@ function App() {
             <span className="nav-btn-icon">👤</span>
             Drivers
           </button>
+
+          <button
+            className={`nav-btn ${page === "maintenance" ? "active" : ""}`}
+            onClick={() => setPage("maintenance")}
+          >
+            <span className="nav-btn-icon">🔧</span>
+            Maintenance
+          </button>
+
+          <button
+            className={`nav-btn ${page === "analytics" ? "active" : ""}`}
+            onClick={() => setPage("analytics")}
+          >
+            <span className="nav-btn-icon">📈</span>
+            Analytics &amp; Fuel
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -2531,6 +3834,14 @@ function App() {
 
         {page === "drivers" && (
           <Drivers userRole={userRole} />
+        )}
+
+        {page === "maintenance" && (
+          <Maintenance userRole={userRole} />
+        )}
+
+        {page === "analytics" && (
+          <Analytics userRole={userRole} />
         )}
       </main>
     </div>

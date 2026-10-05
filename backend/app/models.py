@@ -57,6 +57,7 @@ class Vehicle(Base):
     driver = relationship("Driver", back_populates="vehicles")
     shipments = relationship("Shipment", back_populates="vehicle")
     trips = relationship("Trip", back_populates="vehicle")
+    maintenance_records = relationship("MaintenanceRecord", back_populates="vehicle", cascade="all, delete-orphan", order_by="MaintenanceRecord.scheduled_date.asc()")
 
 
 class Shipment(Base):
@@ -138,3 +139,43 @@ class ShipmentHistory(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     shipment = relationship("Shipment", back_populates="history")
+
+
+class MaintenanceRecord(Base):
+    __tablename__ = "maintenance_records"
+
+    id = Column(Integer, primary_key=True)
+    maintenance_id = Column(String(50), unique=True, nullable=False, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False, index=True)
+    category = Column(String(60), nullable=False)  # Oil Change, Tire Replacement, Engine Service, Brake Service, General Inspection
+    description = Column(String(255), nullable=True)
+    scheduled_date = Column(DateTime, nullable=False, index=True)
+    service_date = Column(DateTime, nullable=True)
+    status = Column(String(40), nullable=False, default="Scheduled", index=True)  # Scheduled, In Progress, Completed, Overdue, Cancelled
+    priority = Column(String(30), nullable=False, default="Medium")  # Low, Medium, High, Urgent
+    cost = Column(Float, nullable=False, default=0.0)
+    mileage = Column(Float, nullable=True)
+    service_center = Column(String(120), nullable=True)
+    notes = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    vehicle = relationship("Vehicle", back_populates="maintenance_records")
+    history = relationship("MaintenanceHistory", back_populates="maintenance_record", cascade="all, delete-orphan", order_by="MaintenanceHistory.created_at.desc()")
+
+
+class MaintenanceHistory(Base):
+    __tablename__ = "maintenance_history"
+
+    id = Column(Integer, primary_key=True)
+    maintenance_id = Column(Integer, ForeignKey("maintenance_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
+    event_type = Column(String(80), nullable=False, default="Status Change")
+    previous_status = Column(String(40), nullable=True)
+    new_status = Column(String(40), nullable=False)
+    cost = Column(Float, nullable=True)
+    notes = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    maintenance_record = relationship("MaintenanceRecord", back_populates="history")
+    vehicle = relationship("Vehicle")
