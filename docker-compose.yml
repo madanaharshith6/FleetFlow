@@ -11,11 +11,71 @@ services:
       - "5432:5432"
     volumes:
       - fleetflow_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetflow -d fleetflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: fleetflow-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fleetflow-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://fleetflow:fleetflow@db:5432/fleetflow
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-fleetflow-super-secret-key-m4-prod}
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fleetflow-celery-worker
+    restart: unless-stopped
+    command: ["celery", "-A", "app.celery_app", "worker", "-P", "solo", "--loglevel=info"]
+    environment:
+      DATABASE_URL: postgresql://fleetflow:fleetflow@db:5432/fleetflow
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fleetflow-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
 volumes:
   fleetflow_pgdata:
