@@ -17,13 +17,15 @@ from .routers import (
     websockets,
     maintenance,
     analytics,
-    tasks
+    tasks,
+    notifications,
+    reports
 )
 
 app = FastAPI(
     title="FleetFlow API – Fleet Management & Logistics Tracking Platform",
-    description="Milestone 3: Maintenance Management, Driver Assignment, Analytics & Background Processing",
-    version="3.0.0"
+    description="Milestone 4: Testing, Deployment, System Optimization, Reports & Export, Notifications",
+    version="4.0.0"
 )
 
 # CORS configuration
@@ -60,14 +62,17 @@ app.include_router(websockets.router)
 app.include_router(maintenance.router)
 app.include_router(analytics.router)
 app.include_router(tasks.router)
+app.include_router(notifications.router)
+app.include_router(reports.router)
+
 
 
 @app.get("/")
 def root():
     return {
         "message": "FleetFlow Logistics & Fleet Management API",
-        "version": "3.0.0",
-        "milestone": 3,
+        "version": "4.0.0",
+        "milestone": 4,
         "features": [
             "Vehicle Maintenance Scheduling & History",
             "Proactive Maintenance Alert System",
@@ -76,7 +81,10 @@ def root():
             "Trip-Based Fuel Monitoring & Cost Estimation",
             "Celery Asynchronous Background Processing",
             "Real-Time Shipment Tracking & Route Optimization",
-            "Role-Based Access Control"
+            "Role-Based Access Control",
+            "Operational Reports & Multi-Format Export (CSV/PDF)",
+            "Unified In-App Notifications & Alerts",
+            "User Profile & Password Management"
         ]
     }
 

@@ -29,8 +29,12 @@ class ApiClient:
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
             with urllib.request.urlopen(req) as resp:
-                resp_body = resp.read().decode("utf-8")
-                return resp.status, json.loads(resp_body) if resp_body else {}
+                resp_bytes = resp.read()
+                try:
+                    resp_str = resp_bytes.decode("utf-8")
+                    return resp.status, json.loads(resp_str) if resp_str else {}
+                except Exception:
+                    return resp.status, resp_bytes
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8")
             try:
@@ -315,9 +319,51 @@ def run_milestone4_suite():
     assert status == 200 and res.get("status") in ["PENDING", "UNKNOWN"]
     log("Edge Case: Invalid Celery task status returns gracefully without crash")
 
+    # -------------------------------------------------------------
+    # 6. MILESTONE 4: NOTIFICATIONS & MULTI-FORMAT REPORT EXPORT
+    # -------------------------------------------------------------
+    print("\n--- 6. Milestone 4: Notifications, Profile & Multi-Format Report Export ---")
+    # 6.1 User Profile /me
+    status, prof = client.get("/api/auth/me")
+    assert status == 200 and "email" in prof
+    log(f"User Profile Verified: {prof['email']} (Role: {prof['role']})")
+
+    # 6.2 Notifications API
+    status, notifs = client.get("/api/notifications")
+    assert status == 200 and isinstance(notifs, list)
+    log(f"Unified In-App Notifications: {len(notifs)} real alerts retrieved")
+
+    # 6.3 Multi-Format Export: Fleet Utilization CSV & PDF
+    status, _ = client.get("/api/reports/export?report_type=fleet_utilization&format=csv")
+    assert status == 200
+    log("Report Export: Fleet Utilization CSV downloaded successfully")
+
+    status, _ = client.get("/api/reports/export?report_type=fleet_utilization&format=pdf")
+    assert status == 200
+    log("Report Export: Fleet Utilization PDF generated successfully")
+
+    # 6.4 Multi-Format Export: Fuel & Maintenance Reports
+    status, _ = client.get("/api/reports/export?report_type=fuel_consumption&format=csv")
+    assert status == 200
+    log("Report Export: Fuel Consumption CSV downloaded successfully")
+
+    status, _ = client.get("/api/reports/export?report_type=maintenance&format=pdf")
+    assert status == 200
+    log("Report Export: Maintenance PDF generated successfully")
+
+    # 6.5 Export Validation Edge Cases
+    status, _ = client.get("/api/reports/export?report_type=invalid_report_name&format=csv")
+    assert status == 400
+    log("Edge Case: Invalid report type rejected with HTTP 400")
+
+    status, _ = client.get("/api/reports/export?report_type=fleet_utilization&format=invalid_fmt")
+    assert status == 400
+    log("Edge Case: Invalid export format rejected with HTTP 400")
+
     print("\n" + "=" * 75)
     print("ALL MILESTONE 1, 2, 3 & 4 WORKFLOWS AND EDGE CASES PASSED (100%)")
     print("=" * 75)
 
 if __name__ == "__main__":
     run_milestone4_suite()
+

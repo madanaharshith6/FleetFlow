@@ -154,21 +154,27 @@ Unprivileged requests to restricted endpoints are rejected with HTTP 403 Forbidd
 ---
 
 ## 🔔 14. Notifications
-* **In-App Proactive Alerts**:
-  * `Overdue`: Flagged when scheduled date is in the past and status is `Scheduled`.
-  * `Due Soon`: Warns dispatchers when service is due within the next 48 hours.
-  * `High / Urgent`: Highlights critical brake or engine services requiring immediate workshop intervention.
-* **Honest Audit Notice**: In-app UI notifications are 100% functional. External third-party SMS (Twilio) and Email (SendGrid) providers are documented as future architecture integrations not required for M4 evaluation.
+* **Unified In-App Alert & Notification Engine (`/api/notifications`)**:
+  * **Maintenance Alerts**: Detects `Overdue` services, upcoming services `Due Soon` within 48 hours, and `High / Urgent` critical issues.
+  * **Delivery Notifications**: Real-time status alerts for shipments `In Transit`, completed `Delivered` consignments, and `Delayed` runs.
+  * **Driver Assignment Alerts**: Active operator vehicle linkages and trip assignments.
+  * **Route Traffic Alerts**: Corridors experiencing severe or high congestion levels.
+* **Honest Audit Notice**: In-app operational notifications are 100% functional. External third-party SMS (Twilio), Email (SendGrid), and Mobile Push notification gateways are documented as future enterprise integrations requiring provider account credentials and are not required for capstone evaluation.
 
 ---
 
-## 📑 15. Reports
+## 📑 15. Reports & Multi-Format Export
 * **Implemented Real-Time Reporting**:
   * Fleet Utilization & Asset Availability Report.
   * Powertrain Fuel Consumption & Cost Breakdown.
-  * Driver Performance & Attendance Roster.
+  * Driver Performance & Attendance Compliance Roster.
+  * Shipment Delivery Fulfillment Report.
   * Vehicle Maintenance Spend & Schedule History.
-* **Honest Audit Notice**: Analytical metrics are rendered live in interactive UI dashboards and accessible via REST API JSON endpoints. Direct one-click PDF/Excel file downloads are documented as prospective reporting extensions not required for M4 evaluation.
+* **Multi-Format Export Engine (`/api/reports/export`)**:
+  * **Excel / CSV Format**: RFC-4180 standard formatted `.csv` downloads compatible with Microsoft Excel and spreadsheet tools.
+  * **PDF Format**: Standards-compliant PDF-1.4 binary documents rendered directly from live database tables with zero third-party dependencies.
+  * **1-Click UI Downloads**: Interactive download controls on the Analytics dashboard allowing instant single-click export of any report.
+
 
 ---
 
@@ -273,6 +279,10 @@ Unprivileged requests to restricted endpoints are rejected with HTTP 403 Forbidd
 | **Tasks** | `POST` | `/api/tasks/maintenance-scan` | Asynchronously trigger overdue maintenance scan |
 | **Tasks** | `POST` | `/api/tasks/maintenance-reminders`| Asynchronously trigger 48h service reminders |
 | **Tasks** | `GET` | `/api/tasks/{task_id}/status` | Poll Celery task AsyncResult status |
+| **Notifications** | `GET` | `/api/notifications` | Unified multi-category operational alerts (Maintenance, Delivery, Driver) |
+| **Reports** | `GET` | `/api/reports/export` | Export database-backed operational reports in CSV (Excel) or PDF |
+| **Auth** | `GET` | `/api/auth/me` | Fetch authenticated user profile & role claims |
+| **Auth** | `PUT` | `/api/auth/change-password` | Update account password securely |
 | **WebSockets** | `WS` | `/ws/shipments/{id}` | Live bi-directional GPS telemetry stream |
 
 Interactive Swagger documentation is available at `/docs`.

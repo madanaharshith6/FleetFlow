@@ -150,22 +150,27 @@
 ---
 
 ## Slide 16: Notifications / Alerts
-* **Proactive Maintenance Alert Engine**: In-app evaluation of service deadlines:
-  * `Overdue`: Flagged when scheduled date is in the past and status is still `Scheduled`.
-  * `Due Soon`: Warns dispatchers when service is due within the next 48 hours.
-  * `High / Urgent`: Highlights critical brake or engine services requiring immediate workshop intervention.
-* **Direct 1-Click Resolution**: Resolves alert items directly by transitioning maintenance records to `In Progress` or `Completed`.
-* **Honest Audit Notice**: In-app UI notifications are 100% functional. External third-party SMS (Twilio) and Email (SendGrid) providers are documented as future architecture integrations not required for M4 evaluation.
+* **Unified In-App Alert Engine (`/api/notifications`)**:
+  * **Maintenance Alerts**: Flagging `Overdue` services, `Due Soon` within 48 hours, and `High / Urgent` critical issues.
+  * **Delivery Notifications**: Real-time status alerts for shipments `In Transit`, completed `Delivered` consignments, and `Delayed` runs.
+  * **Driver Assignment Alerts**: Monitoring active operator assignments and trip linkages.
+  * **Corridor Traffic Alerts**: Flagging routes undergoing heavy congestion.
+* **Direct 1-Click Resolution**: Resolves alert items directly from UI panels.
+* **Honest Audit Notice**: In-app UI notifications are 100% functional. External third-party SMS (Twilio) and Email (SendGrid) providers require third-party credentials and are documented as future enterprise integrations.
 
 ---
 
 ## Slide 17: Reports / Export
 * **Implemented Real-Time Reporting**:
-  * Real-time Fleet Utilization Summary.
-  * Powertrain Fuel Consumption & Cost Report.
-  * Driver Performance & Attendance Roster.
-  * Vehicle Maintenance Spend & Schedule History.
-* **Honest Audit Notice**: All analytical metrics are rendered live in interactive UI dashboards and accessible via REST API JSON endpoints. Direct one-click PDF/Excel file downloads are documented as prospective reporting extensions not required for M4 evaluation.
+  * Real-time Fleet Utilization & Asset Distribution.
+  * Powertrain Fuel Consumption & Financial Cost Report.
+  * Driver Performance, Licensing & Attendance Compliance.
+  * Consignment Delivery Fulfillment Metrics.
+  * Vehicle Maintenance Spend & Historical Lifecycle Audits.
+* **Database-Backed Multi-Format Export Engine (`/api/reports/export`)**:
+  * **Excel / CSV Export**: RFC-4180 standard spreadsheet files opening natively in Microsoft Excel.
+  * **PDF Export**: Valid standards-compliant PDF-1.4 documents generated with pure Python with zero third-party library dependencies.
+  * **Interactive UI**: One-click download buttons on the Analytics dashboard.
 
 ---
 

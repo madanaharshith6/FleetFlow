@@ -3411,6 +3411,7 @@ function Analytics({ userRole }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [workerResult, setWorkerResult] = useState("");
+  const [exportMsg, setExportMsg] = useState("");
 
   async function loadAnalytics() {
     setLoading(true);
@@ -3435,6 +3436,28 @@ function Analytics({ userRole }) {
     loadAnalytics();
   }, []);
 
+  async function downloadReport(reportType, format) {
+    setExportMsg(`Exporting ${reportType} as ${format.toUpperCase()}...`);
+    try {
+      const res = await api.get(`/api/reports/export?report_type=${reportType}&format=${format}`, {
+        responseType: "blob"
+      });
+      const blob = new Blob([res.data], { type: format === "pdf" ? "application/pdf" : "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `fleetflow_${reportType}_${new Date().toISOString().slice(0, 10)}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setExportMsg(`✓ Successfully downloaded ${reportType}.${format}`);
+      setTimeout(() => setExportMsg(""), 4000);
+    } catch (e) {
+      setExportMsg(`Export failed: ${e.response?.data?.detail || e.message}`);
+    }
+  }
+
   async function runCeleryTask(taskType) {
     setWorkerResult("Queueing background task to Celery via Redis broker...");
     try {
@@ -3449,6 +3472,7 @@ function Analytics({ userRole }) {
       setWorkerResult(`Celery task error: ${e.response?.data?.detail || e.message}`);
     }
   }
+
 
   if (loading) {
     return <div className="content-panel"><p>Loading fleet performance and fuel analytics...</p></div>;
@@ -3657,6 +3681,55 @@ function Analytics({ userRole }) {
           </div>
         )}
       </div>
+
+      {/* MODULE 9: OPERATIONAL REPORTS & EXPORT */}
+      <div className="content-panel" style={{ marginTop: "24px" }}>
+        <div className="panel-header">
+          <div>
+            <h2 className="panel-title">📄 Operational Reports & Data Export (Module 9)</h2>
+            <p style={{ fontSize: "12px", color: "#64748b" }}>
+              Download real database-backed operational summaries in CSV (Excel compatible) and PDF formats
+            </p>
+          </div>
+        </div>
+
+        {exportMsg && (
+          <div style={{ marginTop: "12px", padding: "10px 14px", background: "rgba(56, 189, 248, 0.1)", border: "1px solid #38bdf8", borderRadius: "6px", color: "#38bdf8", fontSize: "13px" }}>
+            {exportMsg}
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginTop: "16px" }}>
+          {[
+            { id: "fleet_utilization", name: "Fleet Utilization & Asset Report", desc: "Catalog of active, available, and maintenance vehicles" },
+            { id: "fuel_consumption", name: "Fuel Consumption & Cost Report", desc: "Powertrain fuel burn, efficiency, and diesel spend" },
+            { id: "driver_performance", name: "Driver Performance & Attendance", desc: "Operator licensing, attendance %, and safety scores" },
+            { id: "delivery_performance", name: "Shipment Delivery Performance", desc: "Consignment tracking, delivery status, and progress" },
+            { id: "maintenance", name: "Maintenance & Repair Expenditure", desc: "Preventative service records, category costs, and statuses" },
+          ].map((rep) => (
+            <div key={rep.id} style={{ background: "rgba(255,255,255,0.03)", padding: "16px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ fontWeight: 600, color: "#f8fafc", fontSize: "14px", marginBottom: "4px" }}>{rep.name}</div>
+              <div style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "12px" }}>{rep.desc}</div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ flex: 1 }}
+                  onClick={() => downloadReport(rep.id, "csv")}
+                >
+                  📥 Excel / CSV
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ flex: 1 }}
+                  onClick={() => downloadReport(rep.id, "pdf")}
+                >
+                  📄 PDF
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
@@ -3717,7 +3790,7 @@ function App() {
             <span className="user-role-label">Authenticated Role</span>
             <span className="user-role-val">{userRole}</span>
           </div>
-          <span className="role-pill">M3</span>
+          <span className="role-pill">M4</span>
         </div>
 
         <nav className="nav-links">

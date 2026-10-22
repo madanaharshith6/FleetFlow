@@ -585,3 +585,36 @@ class CeleryTaskTriggerResponse(BaseModel):
     status: str
     message: str
     timestamp: datetime
+
+
+# ==========================================
+# USER PROFILE & PASSWORD SCHEMAS
+# ==========================================
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=6)
+
+
+class UserProfileResponse(BaseModel):
+    id: int
+    email: str
+    role: str
+    is_active: bool
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ==========================================
+# NOTIFICATIONS SCHEMA
+# ==========================================
+
+class NotificationItemResponse(BaseModel):
+    id: str
+    category: str
+    title: str
+    message: str
+    severity: str
+    timestamp: str
