@@ -89,9 +89,19 @@ def root():
     }
 
 
+import logging
+logger = logging.getLogger("fleetflow")
+
+
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables initialized successfully.")
+    except Exception as e:
+        logger.warning(f"Database table verification deferred/warning: {e}")
+        return
+
     db = SessionLocal()
 
     try:
@@ -271,5 +281,8 @@ def startup():
                 db.add_all([h1, h2, h3])
                 db.commit()
 
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"Data seeding notice: {e}")
     finally:
         db.close()
