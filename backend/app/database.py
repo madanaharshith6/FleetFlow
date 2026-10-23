@@ -14,7 +14,9 @@ if DATABASE_URL.startswith("postgres://"):
 elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-connect_args = {}
+connect_args = {
+    "connect_timeout": 5
+}
 # Enforce SSL if specified in query string or when connecting to cloud host (e.g. Render)
 if "sslmode=require" in DATABASE_URL or ("render.com" in DATABASE_URL and "sslmode" not in DATABASE_URL):
     connect_args["sslmode"] = "require"

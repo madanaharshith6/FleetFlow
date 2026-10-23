@@ -1,6 +1,10 @@
 import os
+import re
+import logging
+from datetime import datetime, timedelta
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from .database import Base, engine, SessionLocal
 from .models import User, Driver, Vehicle, Shipment, MaintenanceRecord, MaintenanceHistory, Trip
@@ -21,6 +25,8 @@ from .routers import (
     notifications,
     reports
 )
+
+logger = logging.getLogger("fleetflow")
 
 app = FastAPI(
     title="FleetFlow API – Fleet Management & Logistics Tracking Platform",
@@ -66,7 +72,6 @@ app.include_router(notifications.router)
 app.include_router(reports.router)
 
 
-
 @app.get("/")
 def root():
     return {
@@ -89,8 +94,35 @@ def root():
     }
 
 
-import logging
-logger = logging.getLogger("fleetflow")
+@app.get("/api/health")
+def health_check():
+    raw_url = os.getenv("DATABASE_URL", "")
+    has_env = bool(raw_url and "localhost" not in raw_url)
+    masked_target = re.sub(r"://([^:]+):([^@]+)@", "://***:***@", raw_url) if raw_url else "default_localhost"
+
+    db_connected = False
+    db_message = ""
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        db_connected = True
+        db_message = "PostgreSQL connection active"
+    except Exception as e:
+        db_message = str(e)
+    finally:
+        db.close()
+
+    return {
+        "status": "healthy" if db_connected else "degraded",
+        "service": "fleetflow-api",
+        "version": "4.0.0",
+        "database": {
+            "connected": db_connected,
+            "message": db_message,
+            "env_configured": has_env,
+            "target": masked_target[:45] + "..." if len(masked_target) > 45 else masked_target
+        }
+    }
 
 
 @app.on_event("startup")
@@ -103,7 +135,6 @@ def startup():
         return
 
     db = SessionLocal()
-
     try:
         # 1. Seed demo user accounts for all 4 RBAC roles
         demo_accounts = [
@@ -175,9 +206,7 @@ def startup():
         if db.query(MaintenanceRecord).count() == 0:
             v_all = db.query(Vehicle).all()
             if v_all:
-                from datetime import datetime, timedelta
                 now = datetime.utcnow()
-
                 v1 = v_all[0]
                 v2 = v_all[1] if len(v_all) > 1 else v1
                 v3 = v_all[2] if len(v_all) > 2 else v1
