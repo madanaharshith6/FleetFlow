@@ -1,18 +1,48 @@
 import os
+import socket
+import urllib.parse
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg2://fleetflow:fleetflow@localhost:5432/fleetflow"
-)
+def get_normalized_database_url() -> str:
+    url = os.getenv(
+        "DATABASE_URL",
+        "postgresql+psycopg2://fleetflow:fleetflow@localhost:5432/fleetflow"
+    )
 
-# Render and cloud PostgreSQL providers provide URLs starting with postgres://
-# SQLAlchemy 1.4+ and 2.0 require the dialect to be postgresql:// or postgresql+psycopg2://
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
-elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+    # 1. Normalize Postgres driver scheme
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif url.startswith("postgresql://") and not url.startswith("postgresql+"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+    # 2. Handle Render internal hostnames when cross-region or private DNS is unreachable
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        host = parsed.hostname
+        if host and host.startswith("dpg-") and "." not in host:
+            try:
+                socket.gethostbyname(host)
+            except Exception:
+                # Internal hostname failed to resolve; attempt known Render external regional proxies
+                regions = ["oregon", "frankfurt", "ohio", "singapore", "virginia"]
+                for reg in regions:
+                    candidate = f"{host}.{reg}-postgres.render.com"
+                    try:
+                        s = socket.socket()
+                        s.settimeout(2)
+                        s.connect((candidate, 5432))
+                        s.close()
+                        url = url.replace(host, candidate)
+                        break
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    return url
+
+DATABASE_URL = get_normalized_database_url()
 
 connect_args = {
     "connect_timeout": 5

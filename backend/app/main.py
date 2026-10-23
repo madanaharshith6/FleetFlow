@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from .database import Base, engine, SessionLocal
+from .database import Base, engine, SessionLocal, DATABASE_URL
 from .models import User, Driver, Vehicle, Shipment, MaintenanceRecord, MaintenanceHistory, Trip
 from .auth import hash_password
 from .routers import (
@@ -98,7 +98,8 @@ def root():
 def health_check():
     raw_url = os.getenv("DATABASE_URL", "")
     has_env = bool(raw_url and "localhost" not in raw_url)
-    masked_target = re.sub(r"://([^:]+):([^@]+)@", "://***:***@", raw_url) if raw_url else "default_localhost"
+    active_target = DATABASE_URL if DATABASE_URL else raw_url
+    masked_target = re.sub(r"://([^:]+):([^@]+)@", "://***:***@", active_target) if active_target else "default_localhost"
 
     db_connected = False
     db_message = ""
