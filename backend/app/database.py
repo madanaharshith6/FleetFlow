@@ -40,6 +40,9 @@ def get_normalized_database_url() -> str:
     except Exception:
         pass
 
+    if "render.com" in url and "sslmode" not in url:
+        url += ("&" if "?" in url else "?") + "sslmode=require"
+
     return url
 
 DATABASE_URL = get_normalized_database_url()
