@@ -7,17 +7,35 @@ import "./styles.css";
 // API & WEBSOCKET CONFIGURATION
 // =========================================================
 
-const API_BASE =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1"
-    ? "http://127.0.0.1:8000"
-    : "https://fleetflow-api-p7ai.onrender.com";
+const RAW_API_URL = import.meta.env.VITE_API_URL;
+const DEFAULT_PROD_API = "https://fleetflow-api-p7ai.onrender.com";
+const DEFAULT_LOCAL_API = "http://127.0.0.1:8000";
 
-const WS_BASE =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1"
-    ? "ws://127.0.0.1:8000"
-    : "wss://fleetflow-api-p7ai.onrender.com";
+const isLocalhost =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+   window.location.hostname === "127.0.0.1" ||
+   window.location.hostname === "0.0.0.0");
+
+export const API_BASE = (
+  RAW_API_URL
+    ? RAW_API_URL
+    : isLocalhost
+      ? DEFAULT_LOCAL_API
+      : DEFAULT_PROD_API
+).replace(/\/+$/, "");
+
+const RAW_WS_URL = import.meta.env.VITE_WS_URL;
+const DEFAULT_PROD_WS = "wss://fleetflow-api-p7ai.onrender.com";
+const DEFAULT_LOCAL_WS = "ws://127.0.0.1:8000";
+
+export const WS_BASE = (
+  RAW_WS_URL
+    ? RAW_WS_URL
+    : isLocalhost
+      ? DEFAULT_LOCAL_WS
+      : DEFAULT_PROD_WS
+).replace(/\/+$/, "");
 
 const api = axios.create({ baseURL: API_BASE });
 
@@ -99,7 +117,11 @@ function Login({ onLoginSuccess }) {
       onLoginSuccess(res.data.role);
     } catch (error) {
       if (!error.response) {
-        setErr("Cannot connect to FleetFlow backend server (port 8000). Please ensure the backend is started.");
+        setErr(`Cannot connect to FleetFlow backend at ${API_BASE}. Please verify server status and network.`);
+      } else if (error.response.status === 503) {
+        setErr(error.response?.data?.detail || "Database service is temporarily unavailable. Please verify database connection.");
+      } else if (error.response.status === 500) {
+        setErr(error.response?.data?.detail || "Backend server error occurred. Please verify backend status.");
       } else {
         setErr(error.response?.data?.detail || "Invalid login credentials. Please verify your email and password.");
       }

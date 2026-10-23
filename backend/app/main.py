@@ -2,11 +2,12 @@ import os
 import re
 import logging
 from datetime import datetime, timedelta
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from .database import Base, engine, SessionLocal, DATABASE_URL
+from .database import Base, engine, SessionLocal, DATABASE_URL, DB_CONNECTED, DB_MESSAGE, DB_ENGINE_TYPE
 from .models import User, Driver, Vehicle, Shipment, MaintenanceRecord, MaintenanceHistory, Trip
 from .auth import hash_password
 from .routers import (
@@ -40,6 +41,10 @@ origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "https://fleetflow-ssts.onrender.com",
 ]
 frontend_url = os.getenv("FRONTEND_URL", "").strip()
@@ -50,10 +55,19 @@ if frontend_url and frontend_url not in origins:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global unhandled exception on {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Server processing error: {str(exc)}"}
+    )
 
 # API Routers
 app.include_router(auth.router)
@@ -101,27 +115,28 @@ def health_check():
     active_target = DATABASE_URL if DATABASE_URL else raw_url
     masked_target = re.sub(r"://([^:]+):([^@]+)@", r"://\1:***@", active_target) if active_target else "default_localhost"
 
-    db_connected = False
-    db_message = ""
+    live_connected = False
+    live_message = DB_MESSAGE
     db = SessionLocal()
     try:
         db.execute(text("SELECT 1"))
-        db_connected = True
-        db_message = "PostgreSQL connection active"
+        live_connected = True
+        live_message = f"{DB_ENGINE_TYPE.upper()} connection verified active"
     except Exception as e:
-        db_message = str(e)
+        live_message = str(e)
     finally:
         db.close()
 
     return {
-        "status": "healthy" if db_connected else "degraded",
+        "status": "healthy" if live_connected else "degraded",
         "service": "fleetflow-api",
         "version": "4.0.0",
         "database": {
-            "connected": db_connected,
-            "message": db_message,
+            "connected": live_connected,
+            "engine": DB_ENGINE_TYPE,
+            "message": live_message,
             "env_configured": has_env,
-            "target": masked_target[:45] + "..." if len(masked_target) > 45 else masked_target
+            "target": masked_target[:60] + "..." if len(masked_target) > 60 else masked_target
         }
     }
 
